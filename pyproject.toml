@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "payloadbox"
+version = "1.0.0"
+description = "Encoder/decoder chains for payloads: URL, double-URL, HTML entity, unicode, hex, base64"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "Harsh Zagade", email = "harshnzagade@gmail.com" }]
+keywords = ["security", "encoding", "payloads", "red-team", "xss"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Security",
+]
+dependencies = []
+
+[project.scripts]
+payloadbox = "payloadbox.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/harshzagade/payloadbox"
+
+[tool.setuptools.packages.find]
+include = ["payloadbox*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
