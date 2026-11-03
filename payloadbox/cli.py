@@ -32,10 +32,24 @@ def _write_output(args: argparse.Namespace, text: str) -> None:
             sys.stdout.write("\n")
 
 
+def _rot_shift(value: str) -> int:
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"rot shift must be 0-25, got {value!r}")
+    if not 0 <= n <= 25:
+        raise argparse.ArgumentTypeError(f"rot shift must be 0-25, got {n}")
+    return n
+
+
 def cmd_convert(args: argparse.Namespace, mode: str) -> int:
+    chain = args.chain if args.chain is not None else "url"
+    if getattr(args, "rot", None) is not None:
+        chain = f"{chain},rot{args.rot}" if args.chain is not None \
+            else f"rot{args.rot}"
     try:
         text = _read_input(args)
-        result = apply_chain(text, args.chain, mode)
+        result = apply_chain(text, chain, mode)
     except (KeyError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
         return 1
@@ -80,16 +94,22 @@ def build_parser() -> argparse.ArgumentParser:
         sp.add_argument("-o", "--output-file", help="write output to file")
 
     enc = sub.add_parser("encode", help="encode input through a codec chain")
-    enc.add_argument("-c", "--chain", default="url",
+    enc.add_argument("-c", "--chain", default=None,
                      help="comma-separated codecs, applied left to right "
                           "(default: url)")
+    enc.add_argument("--rot", type=_rot_shift, default=None, metavar="N",
+                     help="Caesar-shift the result by N (0-25); applied "
+                          "after the chain, or alone when -c is omitted")
     add_io(enc)
     enc.set_defaults(func=lambda a: cmd_convert(a, "encode"))
 
     dec = sub.add_parser("decode", help="decode input (chain applied in reverse)")
-    dec.add_argument("-c", "--chain", default="url",
+    dec.add_argument("-c", "--chain", default=None,
                      help="same chain string used for encoding; it is "
                           "undone in reverse order")
+    dec.add_argument("--rot", type=_rot_shift, default=None, metavar="N",
+                     help="undo a Caesar shift of N (0-25); applied before "
+                          "the chain is undone, or alone when -c is omitted")
     add_io(dec)
     dec.set_defaults(func=lambda a: cmd_convert(a, "decode"))
 

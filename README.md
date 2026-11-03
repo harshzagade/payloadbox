@@ -22,10 +22,10 @@ Requires Python 3.8+.
 ## Usage
 
 ```
-payloadbox encode [-c CHAIN] [TEXT]     # encode through a codec chain
-payloadbox decode [-c CHAIN] [TEXT]     # decode (chain undone in reverse)
-payloadbox list                         # show available codecs
-payloadbox detect [TEXT]                # guess which encodings are present
+payloadbox encode [-c CHAIN] [--rot N] [TEXT]  # encode through a codec chain
+payloadbox decode [-c CHAIN] [--rot N] [TEXT]  # decode (chain undone in reverse)
+payloadbox list                                # show available codecs
+payloadbox detect [TEXT]                       # guess which encodings are present
 ```
 
 Input can be the TEXT argument, `--input-file`, or piped stdin. Output goes to
@@ -43,7 +43,13 @@ hexesc     Hex escapes (\x3c)
 oct        Octal escapes (\074)
 base64     Base64 (standard, padded)
 base64url  Base64 URL-safe (unpadded)
+rot13      ROT13 Caesar shift
 ```
+
+Any Caesar shift is available as a chain step too: `rot1` … `rot25`
+(`rot13` is the registered name; `rotN` for other shifts is resolved
+dynamically). `--rot N` is shorthand for appending `rotN` to the chain, or
+for using it alone when `-c` is omitted.
 
 ### Examples
 
@@ -56,6 +62,19 @@ JTNDc2NyaXB0JTNFYWxlcnQlMjgxJTI5JTNDJTJGc2NyaXB0JTNF
 
 $ payloadbox decode -c url,base64 "JTNDc2NyaXB0JTNFYWxlcnQlMjgxJTI5JTNDJTJGc2NyaXB0JTNF"
 <script>alert(1)</script>
+```
+
+Add a classic Caesar layer to a WAF-bypass chain:
+
+```bash
+$ payloadbox encode --rot 13 "<script>"
+<fpevcg>
+
+$ payloadbox encode -c url,rot5 "<script>"
+%3Hxhwnuy%3J
+
+$ payloadbox encode -c base64 --rot 1 "hello"
+bHWtcH8=
 ```
 
 Unicode-escape an event-handler payload:

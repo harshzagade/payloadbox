@@ -53,6 +53,12 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.encode(">>>???"), "Pj4-Pz8_")
         self.assertEqual(c.decode("Pj4-Pz8_"), ">>>???")
 
+    def test_rot13(self):
+        c = CODECS["rot13"]
+        self.assertEqual(c.encode("Hello, World!"), "Uryyb, Jbeyq!")
+        self.assertEqual(c.decode("Uryyb, Jbeyq!"), "Hello, World!")
+        self.assertEqual(c.encode("123!@#"), "123!@#")  # non-letters untouched
+
 
 class TestRoundTrips(unittest.TestCase):
     SAMPLES = ["", "<script>alert('xss')</script>", "héllo wörld ✓",
@@ -79,9 +85,22 @@ class TestRoundTrips(unittest.TestCase):
         step2 = apply_chain(step1, "base64", "encode")
         self.assertEqual(apply_chain(step2, "url,base64", "decode"), "<")
 
+    def test_rotN_chain(self):
+        self.assertEqual(apply_chain("abcXYZ", "rot1", "encode"), "bcdYZA")
+        self.assertEqual(apply_chain("bcdYZA", "rot1", "decode"), "abcXYZ")
+        self.assertEqual(apply_chain("abc", "rot25", "encode"), "zab")
+        # rotN composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "url,rot13", "encode")
+        self.assertEqual(apply_chain(encoded, "url,rot13", "decode"), original)
+
+    def test_rotN_out_of_range(self):
+        with self.assertRaises(ValueError):
+            apply_chain("x", "rot26", "encode")
+
     def test_unknown_codec(self):
         with self.assertRaises(KeyError):
-            apply_chain("x", "rot13", "encode")
+            apply_chain("x", "bogus", "encode")
 
     def test_bad_mode(self):
         with self.assertRaises(ValueError):

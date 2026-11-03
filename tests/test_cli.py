@@ -37,9 +37,26 @@ class TestCli(unittest.TestCase):
         self.assertIn("base64", out.stdout)
 
     def test_unknown_codec_errors(self):
-        out = run("encode", "-c", "rot13", "x")
+        out = run("encode", "-c", "bogus", "x")
         self.assertEqual(out.returncode, 1)
         self.assertIn("unknown codec", out.stderr)
+
+    def test_rot_option(self):
+        enc = run("encode", "--rot", "13", "Hello")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        self.assertEqual(enc.stdout.strip(), "Uryyb")
+        dec = run("decode", "--rot", "13", "Uryyb")
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "Hello")
+        # --rot composes after an explicit chain (base64 output, then shift)
+        enc = run("encode", "-c", "base64", "--rot", "1", "hello")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        self.assertEqual(enc.stdout.strip(), "bHWtcH8=")
+        dec = run("decode", "-c", "base64", "--rot", "1", "bHWtcH8=")
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "hello")
+        out = run("encode", "--rot", "26", "x")
+        self.assertEqual(out.returncode, 2)
 
     def test_version(self):
         out = run("--version")

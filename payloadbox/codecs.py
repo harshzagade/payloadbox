@@ -158,7 +158,46 @@ def base64url_decode(s: str) -> str:
     return _from_bytes(base64.urlsafe_b64decode(t))
 
 
+# ------------------------------------------------------------ rot ----------
+_ROT_RE = re.compile(r"^rot(\d+)$")
+
+
+def caesar_shift(s: str, shift: int) -> str:
+    """Shift ASCII letters by ``shift`` (mod 26); other chars untouched."""
+    shift %= 26
+    out: list[str] = []
+    for ch in s:
+        if "a" <= ch <= "z":
+            out.append(chr((ord(ch) - ord("a") + shift) % 26 + ord("a")))
+        elif "A" <= ch <= "Z":
+            out.append(chr((ord(ch) - ord("A") + shift) % 26 + ord("A")))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def rot13_encode(s: str) -> str:
+    return caesar_shift(s, 13)
+
+
+def rot13_decode(s: str) -> str:
+    return caesar_shift(s, 13)  # ROT13 is its own inverse
+
+
+def make_rot_codec(shift: int) -> Codec:
+    """Build the Codec for a ``rotN`` chain name (0 <= N <= 25)."""
+    if not 0 <= shift <= 25:
+        raise ValueError(f"rot shift must be 0-25, got {shift}")
+    return Codec(
+        f"rot{shift}",
+        f"Caesar shift by {shift} (ROT{shift})",
+        lambda s, n=shift: caesar_shift(s, n),
+        lambda s, n=shift: caesar_shift(s, -n),
+    )
+
+
 # -------------------------------------------------------- registry -------
+
 @dataclass(frozen=True)
 class Codec:
     name: str
@@ -184,8 +223,20 @@ CODECS: dict[str, Codec] = {
             base64url_encode,
             base64url_decode,
         ),
+        Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
     )
 }
+
+
+def resolve_codec(name: str) -> Codec:
+    """Look up a chain name: a registered codec, or a dynamic ``rotN``."""
+    if name in CODECS:
+        return CODECS[name]
+    m = _ROT_RE.match(name)
+    if m:
+        return make_rot_codec(int(m.group(1)))
+    raise KeyError(f"unknown codec(s): {name}")
+
 
 
 def apply_chain(text: str, chain: str, mode: str) -> str:
@@ -197,12 +248,9 @@ def apply_chain(text: str, chain: str, mode: str) -> str:
     if mode not in ("encode", "decode"):
         raise ValueError("mode must be 'encode' or 'decode'")
     names = [c.strip().lower() for c in chain.split(",") if c.strip()]
-    unknown = [n for n in names if n not in CODECS]
-    if unknown:
-        raise KeyError(f"unknown codec(s): {', '.join(unknown)}")
-    seq = names if mode == "encode" else list(reversed(names))
-    for name in seq:
-        codec = CODECS[name]
+    codecs = [resolve_codec(n) for n in names]  # KeyError/ValueError on bad names
+    seq = codecs if mode == "encode" else list(reversed(codecs))
+    for codec in seq:
         text = codec.encode(text) if mode == "encode" else codec.decode(text)
     return text
 
