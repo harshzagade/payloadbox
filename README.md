@@ -24,6 +24,7 @@ Requires Python 3.8+.
 ```
 payloadbox encode [-c CHAIN] [--rot N] [TEXT]  # encode through a codec chain
 payloadbox decode [-c CHAIN] [--rot N] [TEXT]  # decode (chain undone in reverse)
+payloadbox decode --auto [TEXT]                # detect + decode until plain text
 payloadbox list                                # show available codecs
 payloadbox detect [TEXT]                       # guess which encodings are present
 ```
@@ -82,6 +83,19 @@ Unicode-escape an event-handler payload:
 ```bash
 $ payloadbox encode -c uni "<img src=x onerror=alert(1)>"
 \u003c\u0069\u006d\u0067\u0020\u0073\u0072\u0063\u003d\u0078\u0020\u006f\u006e\u0065\u0072\u0072\u006f\u0072\u003d\u0061\u006c\u0065\u0072\u0074\u0028\u0031\u0029\u003e
+```
+
+Fully decode an unknown blob without naming the layers — `decode --auto`
+detects and peels one layer at a time until plain text, stopping on
+already-plain input, undecodable blobs, repeated results, or 20 steps
+(the chain used is reported on stderr, so stdout stays pipeable):
+
+```bash
+$ payloadbox decode --auto "%253Cscript%253E"
+<script>
+
+$ payloadbox decode --auto "JTNDc2NyaXB0JTNF"
+<script>
 ```
 
 Identify an unknown blob:

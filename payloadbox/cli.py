@@ -5,7 +5,7 @@ import argparse
 import sys
 
 from . import __version__
-from .codecs import CODECS, apply_chain, detect
+from .codecs import CODECS, apply_chain, auto_decode, detect
 
 
 def _read_input(args: argparse.Namespace) -> str:
@@ -43,6 +43,21 @@ def _rot_shift(value: str) -> int:
 
 
 def cmd_convert(args: argparse.Namespace, mode: str) -> int:
+    if mode == "decode" and getattr(args, "auto", False):
+        if args.chain is not None or getattr(args, "rot", None) is not None:
+            print("error: --auto cannot be combined with -c/--chain or --rot",
+                  file=sys.stderr)
+            return 2
+        try:
+            text = _read_input(args)
+            result, steps = auto_decode(text)
+        except (ValueError, UnicodeDecodeError, UnicodeEncodeError) as e:
+            print(f"error: undecodable input: {e}", file=sys.stderr)
+            return 1
+        if steps:
+            print(f"decoded via: {' -> '.join(steps)}", file=sys.stderr)
+        _write_output(args, result)
+        return 0
     chain = args.chain if args.chain is not None else "url"
     if getattr(args, "rot", None) is not None:
         chain = f"{chain},rot{args.rot}" if args.chain is not None \
@@ -110,6 +125,10 @@ def build_parser() -> argparse.ArgumentParser:
     dec.add_argument("--rot", type=_rot_shift, default=None, metavar="N",
                      help="undo a Caesar shift of N (0-25); applied before "
                           "the chain is undone, or alone when -c is omitted")
+    dec.add_argument("--auto", action="store_true",
+                     help="detect encodings and decode repeatedly until "
+                          "plain text (loop-guarded); cannot combine with "
+                          "-c/--chain or --rot")
     add_io(dec)
     dec.set_defaults(func=lambda a: cmd_convert(a, "decode"))
 

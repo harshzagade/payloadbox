@@ -1,7 +1,7 @@
 """Tests for payloadbox.codecs — known vectors + round-trips."""
 import unittest
 
-from payloadbox.codecs import CODECS, apply_chain, detect
+from payloadbox.codecs import CODECS, apply_chain, auto_decode, detect
 
 
 class TestKnownVectors(unittest.TestCase):
@@ -136,6 +136,33 @@ class TestDetect(unittest.TestCase):
 
     def test_detect_plain_text_no_hits(self):
         self.assertEqual(detect("hello world"), [])
+
+
+class TestAutoDecode(unittest.TestCase):
+    def test_double_url(self):
+        # url2_decode already peels both percent layers in one step.
+        text, steps = auto_decode("%253Cscript%253E")
+        self.assertEqual(text, "<script>")
+        self.assertEqual(steps, ["url2"])
+
+    def test_base64_of_url(self):
+        blob = CODECS["base64"].encode(CODECS["url"].encode("<script>"))
+        text, steps = auto_decode(blob)
+        self.assertEqual(text, "<script>")
+        self.assertEqual(steps, ["base64", "url"])
+
+    def test_plain_text_unchanged(self):
+        self.assertEqual(auto_decode("hello world"), ("hello world", []))
+
+    def test_max_steps_guard(self):
+        # Two layers (base64 over url) but only one step allowed.
+        blob = CODECS["base64"].encode(CODECS["url"].encode("<"))
+        text, steps = auto_decode(blob, max_steps=1)
+        self.assertEqual((text, steps), ("%3C", ["base64"]))
+
+    def test_undecodable_blob_stops(self):
+        # Looks hex-ish but decodes to invalid UTF-8; returned unchanged.
+        self.assertEqual(auto_decode("ffff"), ("ffff", []))
 
     def test_detect_empty_no_hits(self):
         self.assertEqual(detect(""), [])

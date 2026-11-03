@@ -288,3 +288,40 @@ def detect(text: str) -> list[tuple[str, str]]:
     elif _B64URL_RE.match(t) and ("-" in t or "_" in t) and len(t) >= 4:
         hits.append(("base64url", "contains URL-safe - or _ characters"))
     return hits
+
+
+# -------------------------------------------------------- auto ---------
+def auto_decode(text: str, max_steps: int = 20) -> tuple[str, list[str]]:
+    """Repeatedly detect and decode until plain text (or a loop guard trips).
+
+    Each step tries the detected codecs in order and takes the first one
+    that decodes to something different. Stops when nothing is detected,
+    when no detected codec changes the text, when a result repeats an
+    earlier one (cycle guard), or after ``max_steps`` steps. Returns the
+    final text and the list of codecs applied, in order.
+    """
+    current = text
+    seen = {current}
+    steps: list[str] = []
+    for _ in range(max_steps):
+        decoded = None
+        used = None
+        for name, _reason in detect(current):
+            candidates = ("base64", "base64url") \
+                if name == "base64/base64url" else (name,)
+            for cand in candidates:
+                try:
+                    out = CODECS[cand].decode(current)
+                except (ValueError, UnicodeDecodeError, UnicodeEncodeError):
+                    continue
+                if out != current:
+                    decoded, used = out, cand
+                    break
+            if decoded is not None:
+                break
+        if decoded is None or decoded in seen:
+            break
+        seen.add(decoded)
+        steps.append(used)  # type: ignore[arg-type]
+        current = decoded
+    return current, steps

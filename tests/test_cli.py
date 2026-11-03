@@ -58,6 +58,17 @@ class TestCli(unittest.TestCase):
         out = run("encode", "--rot", "26", "x")
         self.assertEqual(out.returncode, 2)
 
+    def test_auto_decode_cli(self):
+        out = run("decode", "--auto", "%253Cscript%253E")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "<script>")
+        self.assertIn("url2", out.stderr)
+        out = run("decode", "--auto", "hello world")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "hello world")
+        out = run("decode", "--auto", "-c", "url", "%3C")
+        self.assertEqual(out.returncode, 2)
+
     def test_version(self):
         out = run("--version")
         self.assertEqual(out.returncode, 0)
