@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import html
+import quopri
 import re
 import urllib.parse
 from dataclasses import dataclass
@@ -239,6 +240,21 @@ def utf16be_decode(s: str) -> str:
     return _utf16_decode(s, "be")
 
 
+# ------------------------------------------------------------ qp -----------
+def qp_encode(s: str) -> str:
+    """Quoted-printable via stdlib ``quopri`` (email-header / MIME layer).
+
+    Non-ASCII bytes become ``=XX``; long lines get soft ``=\\n`` breaks
+    that decode back exactly. Plain ASCII passes through untouched.
+    """
+    return quopri.encodestring(_to_bytes(s)).decode("ascii")
+
+
+def qp_decode(s: str) -> str:
+    # Invalid escapes (e.g. =ZZ) pass through untouched by quopri.
+    return _from_bytes(quopri.decodestring(s.encode("utf-8")))
+
+
 def _utf16_endian(t: str) -> str | None:
     """Guess UTF-16 endianness from alternating NUL bytes, else None.
 
@@ -287,6 +303,8 @@ CODECS: dict[str, Codec] = {
               utf16le_encode, utf16le_decode),
         Codec("utf16be", "UTF-16BE bytes, latin-1 mapped (BOM tolerated)",
               utf16be_encode, utf16be_decode),
+        Codec("qp", "Quoted-printable (=XX, MIME/email-header)",
+              qp_encode, qp_decode),
     )
 }
 
@@ -344,6 +362,8 @@ def detect(text: str) -> list[tuple[str, str]]:
     endian = _utf16_endian(t)
     if endian:
         hits.append((endian, "alternating NUL bytes — looks like raw UTF-16"))
+    if re.search(r"=[0-9A-Fa-f]{2}", t):
+        hits.append(("qp", "contains quoted-printable sequences like =3D"))
     if re.fullmatch(r"[0-9A-Fa-f]+", t) and len(t) % 2 == 0 and len(t) >= 4:
         hits.append(("hex", "even-length hex-only string"))
     if _B64_RE.match(t) and len(t) % 4 == 0:

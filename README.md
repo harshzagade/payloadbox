@@ -47,6 +47,7 @@ base64url  Base64 URL-safe (unpadded)
 rot13      ROT13 Caesar shift
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
+qp         Quoted-printable (=XX, MIME/email-header)
 ```
 
 Any Caesar shift is available as a chain step too: `rot1` … `rot25`
@@ -90,6 +91,17 @@ $ payloadbox encode -c utf16le "hi" | od -An -tx1
 
 $ printf 'h\0i\0' | payloadbox decode -c utf16le
 hi
+```
+
+Quoted-printable encode an email-header payload (non-ASCII bytes become
+`=XX`, plain ASCII passes through):
+
+```bash
+$ payloadbox encode -c qp "café <b>"
+caf=C3=A9 <b>
+
+$ payloadbox decode -c qp "caf=C3=A9 <b>"
+café <b>
 ```
 
 Unicode-escape an event-handler payload:
@@ -136,7 +148,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-30 tests: known vectors per codec, round-trips (including unicode and empty
+46 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, and detector heuristics.
 
 ## License

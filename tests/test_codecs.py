@@ -70,6 +70,23 @@ class TestKnownVectors(unittest.TestCase):
         with self.assertRaises(UnicodeDecodeError):
             c.decode("A\x00B")
 
+    def test_qp(self):
+        c = CODECS["qp"]
+        self.assertEqual(c.encode("a b+c=d&e"), "a b+c=3Dd&e")
+        self.assertEqual(c.decode("a b+c=3Dd&e"), "a b+c=d&e")
+        self.assertEqual(c.encode("héllo"), "h=C3=A9llo")
+        self.assertEqual(c.decode("h=C3=A9llo"), "héllo")
+        # plain text and invalid escapes pass through untouched
+        self.assertEqual(c.decode("hello"), "hello")
+        self.assertEqual(c.decode("=ZZ"), "=ZZ")
+        # soft line breaks (76-col wrap) decode back exactly
+        long_text = "x" * 200
+        self.assertEqual(c.decode(c.encode(long_text)), long_text)
+        # composes with other codecs and inverts as a chain
+        original = "<b>café</b>"
+        encoded = apply_chain(original, "qp,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "qp,base64", "decode"), original)
+
     def test_utf16be(self):
         c = CODECS["utf16be"]
         self.assertEqual(c.encode("AB"), "\x00A\x00B")
@@ -154,6 +171,10 @@ class TestDetect(unittest.TestCase):
 
     def test_detect_plain_text_no_hits(self):
         self.assertEqual(detect("hello world"), [])
+
+    def test_detect_qp(self):
+        self.assertIn("qp", [n for n, _ in detect("hello=20world")])
+        self.assertIn("qp", [n for n, _ in detect("caf=C3=A9")])
 
     def test_detect_utf16(self):
         self.assertIn("utf16le", [n for n, _ in detect("h\x00e\x00l\x00l\x00o\x00")])
