@@ -59,6 +59,24 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.decode("Uryyb, Jbeyq!"), "Hello, World!")
         self.assertEqual(c.encode("123!@#"), "123!@#")  # non-letters untouched
 
+    def test_utf16le(self):
+        c = CODECS["utf16le"]
+        self.assertEqual(c.encode("AB"), "A\x00B\x00")
+        self.assertEqual(c.decode("A\x00B\x00"), "AB")
+        # BOM tolerated, both as raw BOM bytes and as a pasted U+FEFF
+        self.assertEqual(c.decode("\xff\xfeA\x00B\x00"), "AB")
+        self.assertEqual(c.decode("\ufeffA\x00B\x00"), "AB")
+        # odd byte count is undecodable, not silently truncated
+        with self.assertRaises(UnicodeDecodeError):
+            c.decode("A\x00B")
+
+    def test_utf16be(self):
+        c = CODECS["utf16be"]
+        self.assertEqual(c.encode("AB"), "\x00A\x00B")
+        self.assertEqual(c.decode("\x00A\x00B"), "AB")
+        self.assertEqual(c.decode("\xfe\xff\x00A\x00B"), "AB")
+        self.assertEqual(c.decode("\ufeff\x00A\x00B"), "AB")
+
 
 class TestRoundTrips(unittest.TestCase):
     SAMPLES = ["", "<script>alert('xss')</script>", "héllo wörld ✓",
@@ -137,6 +155,13 @@ class TestDetect(unittest.TestCase):
     def test_detect_plain_text_no_hits(self):
         self.assertEqual(detect("hello world"), [])
 
+    def test_detect_utf16(self):
+        self.assertIn("utf16le", [n for n, _ in detect("h\x00e\x00l\x00l\x00o\x00")])
+        self.assertIn("utf16be", [n for n, _ in detect("\x00h\x00e\x00l\x00l\x00o")])
+        # bare NUL runs and odd lengths are not claimed
+        self.assertNotIn("utf16le", [n for n, _ in detect("\x00\x00\x00\x00")])
+        self.assertNotIn("utf16le", [n for n, _ in detect("a\x00b")])
+
 
 class TestAutoDecode(unittest.TestCase):
     def test_double_url(self):
@@ -166,6 +191,12 @@ class TestAutoDecode(unittest.TestCase):
 
     def test_detect_empty_no_hits(self):
         self.assertEqual(detect(""), [])
+
+    def test_auto_utf16_of_url(self):
+        blob = CODECS["utf16le"].encode(CODECS["url"].encode("<script>"))
+        text, steps = auto_decode(blob)
+        self.assertEqual(text, "<script>")
+        self.assertEqual(steps, ["utf16le", "url"])
 
 
 if __name__ == "__main__":

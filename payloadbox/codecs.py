@@ -196,6 +196,65 @@ def make_rot_codec(shift: int) -> Codec:
     )
 
 
+# ---------------------------------------------------------- utf16 --------
+def _utf16_encode(s: str, endian: str) -> str:
+    """Encode to raw UTF-16 bytes, carried through the str layer via latin-1.
+
+    Latin-1 maps bytes 1:1 to chars, so the result stays a plain str that
+    pipes cleanly and round-trips exactly (surrogate pairs included).
+    """
+    return s.encode(f"utf-16-{endian}").decode("latin-1")
+
+
+def _utf16_decode(s: str, endian: str) -> str:
+    """Decode latin-1-mapped UTF-16 bytes, tolerating one leading BOM.
+
+    A BOM is stripped whether it arrives as raw BOM bytes (``\\xff\\xfe`` /
+    ``\\xfe\\xff``) or as a pasted U+FEFF character. Note the trade-off: a
+    literal leading U+FEFF in the original text is not round-trip
+    preserved, since its encoding is indistinguishable from a BOM.
+    """
+    if s.startswith("\ufeff"):
+        s = s[1:]
+    b = s.encode("latin-1")  # ValueError on non-latin-1 input
+    bom = b"\xff\xfe" if endian == "le" else b"\xfe\xff"
+    if b.startswith(bom):
+        b = b[len(bom):]
+    return b.decode(f"utf-16-{endian}")
+
+
+def utf16le_encode(s: str) -> str:
+    return _utf16_encode(s, "le")
+
+
+def utf16le_decode(s: str) -> str:
+    return _utf16_decode(s, "le")
+
+
+def utf16be_encode(s: str) -> str:
+    return _utf16_encode(s, "be")
+
+
+def utf16be_decode(s: str) -> str:
+    return _utf16_decode(s, "be")
+
+
+def _utf16_endian(t: str) -> str | None:
+    """Guess UTF-16 endianness from alternating NUL bytes, else None.
+
+    ASCII text in UTF-16LE has NULs at odd positions, in UTF-16BE at even
+    positions. Requires even length >= 4 and at least one non-NUL byte so a
+    bare run of NULs is not claimed.
+    """
+    if len(t) < 4 or len(t) % 2:
+        return None
+    if all(ch == "\x00" for ch in t[1::2]) and any(ch != "\x00" for ch in t[0::2]):
+        return "utf16le"
+    if all(ch == "\x00" for ch in t[0::2]) and any(ch != "\x00" for ch in t[1::2]):
+        return "utf16be"
+    return None
+
+
 # -------------------------------------------------------- registry -------
 
 @dataclass(frozen=True)
@@ -224,6 +283,10 @@ CODECS: dict[str, Codec] = {
             base64url_decode,
         ),
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
+        Codec("utf16le", "UTF-16LE bytes, latin-1 mapped (BOM tolerated)",
+              utf16le_encode, utf16le_decode),
+        Codec("utf16be", "UTF-16BE bytes, latin-1 mapped (BOM tolerated)",
+              utf16be_encode, utf16be_decode),
     )
 }
 
@@ -278,6 +341,9 @@ def detect(text: str) -> list[tuple[str, str]]:
         hits.append(("hexesc", r"contains \xHH escapes"))
     if re.search(r"\\[0-7]{1,3}", t):
         hits.append(("oct", r"contains \OOO octal escapes"))
+    endian = _utf16_endian(t)
+    if endian:
+        hits.append((endian, "alternating NUL bytes — looks like raw UTF-16"))
     if re.fullmatch(r"[0-9A-Fa-f]+", t) and len(t) % 2 == 0 and len(t) >= 4:
         hits.append(("hex", "even-length hex-only string"))
     if _B64_RE.match(t) and len(t) % 4 == 0:
