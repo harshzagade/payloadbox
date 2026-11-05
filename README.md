@@ -26,8 +26,12 @@ payloadbox encode [-c CHAIN] [--rot N] [TEXT]  # encode through a codec chain
 payloadbox decode [-c CHAIN] [--rot N] [TEXT]  # decode (chain undone in reverse)
 payloadbox decode --auto [TEXT]                # detect + decode until plain text
 payloadbox list                                # show available codecs
-payloadbox detect [TEXT]                       # guess which encodings are present
+payloadbox detect [--json] [TEXT]              # guess which encodings are present
 ```
+
+`detect --json` prints a machine-readable list of detected encodings with
+their evidence strings (an empty list when nothing is detected), for
+pipeline consumers:
 
 Input can be the TEXT argument, `--input-file`, or piped stdin. Output goes to
 stdout or `--output-file`.
@@ -156,6 +160,14 @@ url   contains percent-encoded sequences like %3C
 
 $ payloadbox detect "aGVsbG8="
 base64  base64 alphabet with padding or +/
+
+$ payloadbox detect --json "aGVsbG8="
+[
+  {
+    "encoding": "base64",
+    "evidence": "base64 alphabet with padding or +/"
+  }
+]
 ```
 
 Pipe-friendly:
@@ -171,8 +183,9 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-52 tests: known vectors per codec, round-trips (including unicode and empty
-input), chain inversion, detector heuristics, and JWT decode-only behaviour.
+53 tests: known vectors per codec, round-trips (including unicode and empty
+input), chain inversion, detector heuristics, JWT decode-only behaviour,
+and machine-readable `detect --json` output.
 
 ## License
 

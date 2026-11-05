@@ -36,6 +36,19 @@ class TestCli(unittest.TestCase):
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("base64", out.stdout)
 
+    def test_detect_json(self):
+        import json
+        out = run("detect", "--json", "aGVsbG8=")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        hits = json.loads(out.stdout)
+        self.assertIsInstance(hits, list)
+        self.assertTrue(any("base64" in h["encoding"] for h in hits))
+        self.assertTrue(all("evidence" in h for h in hits))
+        # plain text: machine-readable empty list, not the human message
+        out = run("detect", "--json", "hello world")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(out.stdout), [])
+
     def test_unknown_codec_errors(self):
         out = run("encode", "-c", "bogus", "x")
         self.assertEqual(out.returncode, 1)

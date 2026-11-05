@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 
 from . import __version__
@@ -85,6 +86,11 @@ def cmd_list(_args: argparse.Namespace) -> int:
 def cmd_detect(args: argparse.Namespace) -> int:
     text = _read_input(args)
     hits = detect(text)
+    if getattr(args, "json", False):
+        print(json.dumps(
+            [{"encoding": name, "evidence": reason} for name, reason in hits],
+            indent=2))
+        return 0
     if not hits:
         print("no known encoding detected")
         return 0
@@ -136,6 +142,10 @@ def build_parser() -> argparse.ArgumentParser:
     lst.set_defaults(func=cmd_list)
 
     det = sub.add_parser("detect", help="guess which encodings are present")
+    det.add_argument("--json", action="store_true",
+                     help="machine-readable list of detected encodings "
+                          "with their evidence strings (empty list when "
+                          "nothing is detected)")
     add_io(det)
     det.set_defaults(func=cmd_detect)
     return p
