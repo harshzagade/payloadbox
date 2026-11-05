@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import base64
 import html
+import json
 import quopri
 import re
 import urllib.parse
@@ -255,6 +256,47 @@ def qp_decode(s: str) -> str:
     return _from_bytes(quopri.decodestring(s.encode("utf-8")))
 
 
+# ------------------------------------------------------------ jwt ----------
+def jwt_encode(s: str) -> str:
+    """JWT is decode-only: there is no plain-text form to encode to."""
+    raise ValueError(
+        "jwt is decode-only: it decodes a token's header and payload "
+        "into readable JSON and never verifies a signature"
+    )
+
+
+def _jwt_segment(segment: str, label: str) -> dict:
+    """Base64url-decode one JWT segment and parse it as a JSON object."""
+    t = re.sub(r"\s+", "", segment)
+    t += "=" * (-len(t) % 4)
+    try:
+        raw = base64.urlsafe_b64decode(t)
+        return json.loads(raw.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError) as e:
+        raise ValueError(f"invalid JWT {label} segment: {e}") from e
+
+
+def jwt_decode(s: str) -> str:
+    """Decode a JWT's header and payload segments into readable JSON.
+
+    Decode only: the signature segment (when present) is ignored, never
+    verified, and never checked against any key. Accepts the standard
+    three-segment form and the two-segment header.payload form.
+    """
+    parts = s.strip().split(".")
+    if len(parts) not in (2, 3):
+        raise ValueError(
+            "invalid JWT: expected header.payload or "
+            "header.payload.signature segments"
+        )
+    header = _jwt_segment(parts[0], "header")
+    payload = _jwt_segment(parts[1], "payload")
+    if not isinstance(header, dict) or not isinstance(payload, dict):
+        raise ValueError("invalid JWT: header and payload must be JSON objects")
+    return json.dumps({"header": header, "payload": payload},
+                      indent=2, ensure_ascii=False)
+
+
 def _utf16_endian(t: str) -> str | None:
     """Guess UTF-16 endianness from alternating NUL bytes, else None.
 
@@ -305,6 +347,9 @@ CODECS: dict[str, Codec] = {
               utf16be_encode, utf16be_decode),
         Codec("qp", "Quoted-printable (=XX, MIME/email-header)",
               qp_encode, qp_decode),
+        Codec("jwt", "JWT header/payload decode only "
+              "(signature never verified)",
+              jwt_encode, jwt_decode),
     )
 }
 

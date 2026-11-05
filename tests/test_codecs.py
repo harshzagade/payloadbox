@@ -100,11 +100,70 @@ class TestRoundTrips(unittest.TestCase):
                "a b+c=d&e", "\x00\x01\x02", "emoji 🎯 test"]
 
     def test_every_codec_round_trips(self):
+        # jwt is decode-only (see TestJwt); every reversible codec must
+        # still round-trip exactly.
         for name, codec in CODECS.items():
+            if name == "jwt":
+                continue
             for s in self.SAMPLES:
                 with self.subTest(codec=name, sample=repr(s)[:30]):
                     self.assertEqual(codec.decode(codec.encode(s)), s,
                                      f"{name} failed round-trip")
+
+
+class TestJwt(unittest.TestCase):
+    TOKEN = (
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+        ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ"
+        ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    )
+
+    def test_decode_known_token(self):
+        import json
+        out = json.loads(CODECS["jwt"].decode(self.TOKEN))
+        self.assertEqual(out["header"], {"alg": "HS256", "typ": "JWT"})
+        self.assertEqual(out["payload"]["name"], "John Doe")
+        self.assertEqual(out["payload"]["iat"], 1516239022)
+
+    def test_signature_never_verified(self):
+        # A token with a garbage signature still decodes: the signature
+        # segment is ignored, never checked against any key.
+        import json
+        garbage = self.TOKEN.rsplit(".", 1)[0] + ".notarealsignature"
+        out = json.loads(CODECS["jwt"].decode(garbage))
+        self.assertEqual(out["payload"]["sub"], "1234567890")
+
+    def test_two_segment_form(self):
+        import json
+        header_payload = self.TOKEN.rsplit(".", 1)[0]
+        out = json.loads(CODECS["jwt"].decode(header_payload))
+        self.assertEqual(out["header"]["alg"], "HS256")
+
+    def test_encode_is_decode_only(self):
+        with self.assertRaises(ValueError):
+            CODECS["jwt"].encode("hello")
+
+    def test_malformed_tokens_rejected(self):
+        for bad in ("notatoken", "a.b", "a.b.c.d",
+                    "!!!.eyJhIjogMX0.sig", "eyJhIjogMX0.!!!.sig",
+                    "eyJhIjogMX0.WzFd.sig"):
+            with self.subTest(token=bad):
+                with self.assertRaises(ValueError):
+                    CODECS["jwt"].decode(bad)
+
+    def test_cli_decode_jwt(self):
+        import subprocess
+        import sys
+        out = subprocess.run(
+            [sys.executable, "-m", "payloadbox", "decode", "-c", "jwt",
+             self.TOKEN], capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn('"John Doe"', out.stdout)
+        bad = subprocess.run(
+            [sys.executable, "-m", "payloadbox", "encode", "-c", "jwt",
+             "hello"], capture_output=True, text=True, timeout=30)
+        self.assertEqual(bad.returncode, 1)
+        self.assertIn("decode-only", bad.stderr)
 
     def test_chain_round_trip(self):
         original = "<img src=x onerror=alert(1)>"

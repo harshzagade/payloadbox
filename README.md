@@ -48,7 +48,12 @@ rot13      ROT13 Caesar shift
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
 qp         Quoted-printable (=XX, MIME/email-header)
+jwt        JWT header/payload decode only (signature never verified)
 ```
+
+`jwt` is decode-only: `encode -c jwt` fails with a clear error, since
+there is no plain-text form to encode to and the signature is never
+verified against any key.
 
 Any Caesar shift is available as a chain step too: `rot1` … `rot25`
 (`rot13` is the registered name; `rotN` for other shifts is resolved
@@ -91,6 +96,24 @@ $ payloadbox encode -c utf16le "hi" | od -An -tx1
 
 $ printf 'h\0i\0' | payloadbox decode -c utf16le
 hi
+```
+
+Decode a JWT's header and payload into readable JSON (decode only — the
+signature segment is ignored, never verified):
+
+```bash
+$ payloadbox decode -c jwt "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+{
+  "header": {
+    "alg": "HS256",
+    "typ": "JWT"
+  },
+  "payload": {
+    "sub": "1234567890",
+    "name": "John Doe",
+    "iat": 1516239022
+  }
+}
 ```
 
 Quoted-printable encode an email-header payload (non-ASCII bytes become
@@ -148,8 +171,8 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-46 tests: known vectors per codec, round-trips (including unicode and empty
-input), chain inversion, and detector heuristics.
+52 tests: known vectors per codec, round-trips (including unicode and empty
+input), chain inversion, detector heuristics, and JWT decode-only behaviour.
 
 ## License
 
