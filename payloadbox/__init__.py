@@ -5,5 +5,5 @@ entity, unicode-escape, hex, hex-escape, octal-escape and base64 codecs that
 can be chained in any order, plus an encoding detector.
 """
 
-__version__ = "1.7.0"
+__version__ = "1.8.0"
 __all__ = ["__version__"]

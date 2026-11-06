@@ -75,6 +75,24 @@ class TestKnownVectors(unittest.TestCase):
         with self.assertRaises(ValueError):
             c.decode("NBSWY3D8")
 
+    def test_base85(self):
+        c = CODECS["base85"]
+        self.assertEqual(c.encode("hello"), "Xk~0{Zv")
+        self.assertEqual(c.decode("Xk~0{Zv"), "hello")
+        self.assertEqual(c.encode(""), "")
+        self.assertEqual(c.decode(""), "")
+        # whitespace tolerated
+        self.assertEqual(c.decode("Xk~0 {Zv"), "hello")
+        # composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "base85,url", "encode")
+        self.assertEqual(apply_chain(encoded, "base85,url", "decode"), original)
+        # characters outside the RFC 1924 alphabet are rejected
+        with self.assertRaises(ValueError):
+            c.decode('Xk~0{Z"')
+        with self.assertRaises(ValueError):
+            c.decode("Xk~0,Zv")
+
     def test_rot13(self):
         c = CODECS["rot13"]
         self.assertEqual(c.encode("Hello, World!"), "Uryyb, Jbeyq!")

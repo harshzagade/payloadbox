@@ -160,6 +160,19 @@ def base64url_decode(s: str) -> str:
     return _from_bytes(base64.urlsafe_b64decode(t))
 
 
+# ---------------------------------------------------------- base85 ---------
+def base85_encode(s: str) -> str:
+    """RFC 1924 base85 — compact binary-text layer, no padding."""
+    return base64.b85encode(_to_bytes(s)).decode("ascii")
+
+
+def base85_decode(s: str) -> str:
+    t = re.sub(r"\s+", "", s)
+    if not t:
+        return ""
+    return _from_bytes(base64.b85decode(t))
+
+
 # ---------------------------------------------------------- base32 ---------
 def base32_encode(s: str) -> str:
     return base64.b32encode(_to_bytes(s)).decode("ascii")
@@ -356,6 +369,8 @@ CODECS: dict[str, Codec] = {
         ),
         Codec("base32", "Base32 (RFC 4648, padded)",
               base32_encode, base32_decode),
+        Codec("base85", "Base85 (RFC 1924, unpadded)",
+              base85_encode, base85_decode),
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
         Codec("utf16le", "UTF-16LE bytes, latin-1 mapped (BOM tolerated)",
               utf16le_encode, utf16le_decode),

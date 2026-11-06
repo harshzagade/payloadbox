@@ -49,6 +49,7 @@ oct        Octal escapes (\074)
 base64     Base64 (standard, padded)
 base64url  Base64 URL-safe (unpadded)
 base32     Base32 (RFC 4648, padded)
+base85     Base85 (RFC 1924, unpadded)
 rot13      ROT13 Caesar shift
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
@@ -137,6 +138,18 @@ base32  base32 alphabet (A-Z, 2-7) with valid padding
 base64/base64url  ambiguous: valid in both alphabets
 ```
 
+Base85 encode a payload (RFC 1924 — a compact binary-text layer some
+filters use; the alphabet is nearly all printable ASCII, so `detect`
+deliberately does not guess it — name it explicitly in the chain):
+
+```bash
+$ payloadbox encode -c base85 "hello"
+Xk~0{Zv
+
+$ payloadbox decode -c base85 "Xk~0{Zv"
+hello
+```
+
 Quoted-printable encode an email-header payload (non-ASCII bytes become
 `=XX`, plain ASCII passes through):
 
@@ -200,7 +213,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-56 tests: known vectors per codec, round-trips (including unicode and empty
+57 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 
