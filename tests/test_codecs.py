@@ -53,6 +53,28 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.encode(">>>???"), "Pj4-Pz8_")
         self.assertEqual(c.decode("Pj4-Pz8_"), ">>>???")
 
+    def test_base32(self):
+        c = CODECS["base32"]
+        self.assertEqual(c.encode("hello"), "NBSWY3DP")
+        self.assertEqual(c.decode("NBSWY3DP"), "hello")
+        self.assertEqual(c.encode("hi"), "NBUQ====")
+        self.assertEqual(c.decode("NBUQ===="), "hi")
+        # missing padding, lowercase and whitespace tolerated
+        self.assertEqual(c.decode("NBUQ"), "hi")
+        self.assertEqual(c.decode("nbswy3dp"), "hello")
+        self.assertEqual(c.decode("NBSW Y3DP"), "hello")
+        self.assertEqual(c.encode(""), "")
+        self.assertEqual(c.decode(""), "")
+        # composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "base32,url", "encode")
+        self.assertEqual(apply_chain(encoded, "base32,url", "decode"), original)
+        # characters outside the A-Z2-7 alphabet are rejected
+        with self.assertRaises(ValueError):
+            c.decode("NBSWY3D1")
+        with self.assertRaises(ValueError):
+            c.decode("NBSWY3D8")
+
     def test_rot13(self):
         c = CODECS["rot13"]
         self.assertEqual(c.encode("Hello, World!"), "Uryyb, Jbeyq!")
@@ -228,6 +250,19 @@ class TestDetect(unittest.TestCase):
         names = [n for n, _ in detect("PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==")]
         self.assertTrue(any("base64" in n for n in names))
 
+    def test_detect_base32(self):
+        names = [n for n, _ in detect("NBSWY3DP")]
+        self.assertIn("base32", names)
+        # base32 is listed before base64, so --auto peels it as base32
+        b64 = next(n for n in names if "base64" in n)
+        self.assertLess(names.index("base32"), names.index(b64))
+        # lowercase base64 stays base64, not base32
+        self.assertNotIn("base32", [n for n, _ in detect("aGVsbG8=")])
+        # pure-hex blobs stay hex, not base32
+        self.assertNotIn("base32", [n for n, _ in detect("41424344")])
+        # two "=" of padding is never valid base32, so not claimed
+        self.assertNotIn("base32", [n for n, _ in detect("NBSWY3==")])
+
     def test_detect_plain_text_no_hits(self):
         self.assertEqual(detect("hello world"), [])
 
@@ -255,6 +290,11 @@ class TestAutoDecode(unittest.TestCase):
         text, steps = auto_decode(blob)
         self.assertEqual(text, "<script>")
         self.assertEqual(steps, ["base64", "url"])
+
+    def test_auto_base32(self):
+        text, steps = auto_decode("NBSWY3DP")
+        self.assertEqual(text, "hello")
+        self.assertEqual(steps, ["base32"])
 
     def test_plain_text_unchanged(self):
         self.assertEqual(auto_decode("hello world"), ("hello world", []))

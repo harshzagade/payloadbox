@@ -48,6 +48,7 @@ hexesc     Hex escapes (\x3c)
 oct        Octal escapes (\074)
 base64     Base64 (standard, padded)
 base64url  Base64 URL-safe (unpadded)
+base32     Base32 (RFC 4648, padded)
 rot13      ROT13 Caesar shift
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
@@ -120,6 +121,22 @@ $ payloadbox decode -c jwt "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM
 }
 ```
 
+Base32 encode a payload (RFC 4648 — decode tolerates missing padding and
+lowercase input; `detect` flags uppercase-only A-Z2-7 blobs as base32
+before base64, so `decode --auto` peels them as base32):
+
+```bash
+$ payloadbox encode -c base32 "hello"
+NBSWY3DP
+
+$ payloadbox decode -c base32 "NBSWY3D"
+hello
+
+$ payloadbox detect "NBSWY3DP"
+base32  base32 alphabet (A-Z, 2-7) with valid padding
+base64/base64url  ambiguous: valid in both alphabets
+```
+
 Quoted-printable encode an email-header payload (non-ASCII bytes become
 `=XX`, plain ASCII passes through):
 
@@ -183,7 +200,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-53 tests: known vectors per codec, round-trips (including unicode and empty
+56 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 

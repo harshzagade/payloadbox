@@ -160,6 +160,20 @@ def base64url_decode(s: str) -> str:
     return _from_bytes(base64.urlsafe_b64decode(t))
 
 
+# ---------------------------------------------------------- base32 ---------
+def base32_encode(s: str) -> str:
+    return base64.b32encode(_to_bytes(s)).decode("ascii")
+
+
+def base32_decode(s: str) -> str:
+    """RFC 4648 base32; case-insensitive, missing padding tolerated."""
+    t = re.sub(r"\s+", "", s).upper()
+    if not t:
+        return ""
+    t += "=" * (-len(t) % 8)
+    return _from_bytes(base64.b32decode(t))
+
+
 # ------------------------------------------------------------ rot ----------
 _ROT_RE = re.compile(r"^rot(\d+)$")
 
@@ -340,6 +354,8 @@ CODECS: dict[str, Codec] = {
             base64url_encode,
             base64url_decode,
         ),
+        Codec("base32", "Base32 (RFC 4648, padded)",
+              base32_encode, base32_decode),
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
         Codec("utf16le", "UTF-16LE bytes, latin-1 mapped (BOM tolerated)",
               utf16le_encode, utf16le_decode),
@@ -384,6 +400,8 @@ def apply_chain(text: str, chain: str, mode: str) -> str:
 # -------------------------------------------------------- detect ---------
 _B64_RE = re.compile(r"^[A-Za-z0-9+/]{4,}={0,2}$")
 _B64URL_RE = re.compile(r"^[A-Za-z0-9\-_]+$")
+_B32_RE = re.compile(r"^[A-Z2-7]+={0,6}$")
+_B32_PADDINGS = (0, 1, 3, 4, 6)  # valid trailing "=" counts for base32
 
 
 def detect(text: str) -> list[tuple[str, str]]:
@@ -411,6 +429,13 @@ def detect(text: str) -> list[tuple[str, str]]:
         hits.append(("qp", "contains quoted-printable sequences like =3D"))
     if re.fullmatch(r"[0-9A-Fa-f]+", t) and len(t) % 2 == 0 and len(t) >= 4:
         hits.append(("hex", "even-length hex-only string"))
+    # Base32 before base64: an uppercase-only A-Z2-7 blob of length % 8 == 0
+    # with valid padding is far more likely base32 than base64 (hex already
+    # claimed its own strings above, so pure-hex blobs stay hex).
+    if (len(t) >= 8 and len(t) % 8 == 0 and _B32_RE.match(t)
+            and t.count("=") in _B32_PADDINGS
+            and (t.count("=") == 0 or t.endswith("="))):
+        hits.append(("base32", "base32 alphabet (A-Z, 2-7) with valid padding"))
     if _B64_RE.match(t) and len(t) % 4 == 0:
         if "+" in t or "/" in t or t.endswith("="):
             hits.append(("base64", "base64 alphabet with padding or +/"))
