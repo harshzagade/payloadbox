@@ -11,6 +11,7 @@ import json
 import quopri
 import re
 import urllib.parse
+import zlib
 from dataclasses import dataclass
 from typing import Callable
 
@@ -185,6 +186,49 @@ def base32_decode(s: str) -> str:
         return ""
     t += "=" * (-len(t) % 8)
     return _from_bytes(base64.b32decode(t))
+
+
+# ------------------------------------------------------------ zlib --------
+def zlib_encode(s: str) -> str:
+    """Compress the UTF-8 bytes (level 9), carried via latin-1 like utf16.
+
+    The compressed bytes are mapped 1:1 to chars so the result stays a
+    plain str that pipes cleanly and round-trips exactly; chain it with
+    base64/hex when the transport needs printable text.
+    """
+    return zlib.compress(_to_bytes(s), 9).decode("latin-1")
+
+
+def zlib_decode(s: str) -> str:
+    if not s:
+        return ""
+    try:
+        raw = zlib.decompress(s.encode("latin-1"))
+    except zlib.error as e:
+        raise ValueError(f"invalid zlib stream: {e}") from e
+    return _from_bytes(raw)
+
+
+def _looks_zlib(t: str) -> bool:
+    """True when ``t`` is a zlib stream that decompresses to valid UTF-8.
+
+    A real zlib header is 0x78 followed by a flag byte whose (CMF*256+FLG)
+    is a multiple of 31; the trial decompress then rules out lookalikes, so
+    false positives are negligible. Never raises.
+    """
+    if len(t) < 2 or t[0] != "x":
+        return False
+    try:
+        raw = t.encode("latin-1")
+    except UnicodeEncodeError:
+        return False
+    if (raw[0] * 256 + raw[1]) % 31 != 0:
+        return False
+    try:
+        zlib.decompress(raw).decode("utf-8")
+    except (zlib.error, UnicodeDecodeError):
+        return False
+    return True
 
 
 # ------------------------------------------------------------ rot ----------
@@ -371,6 +415,8 @@ CODECS: dict[str, Codec] = {
               base32_encode, base32_decode),
         Codec("base85", "Base85 (RFC 1924, unpadded)",
               base85_encode, base85_decode),
+        Codec("zlib", "zlib compression (latin-1 mapped, chain with base64)",
+              zlib_encode, zlib_decode),
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
         Codec("utf16le", "UTF-16LE bytes, latin-1 mapped (BOM tolerated)",
               utf16le_encode, utf16le_decode),
@@ -440,6 +486,8 @@ def detect(text: str) -> list[tuple[str, str]]:
     endian = _utf16_endian(t)
     if endian:
         hits.append((endian, "alternating NUL bytes — looks like raw UTF-16"))
+    if _looks_zlib(t):
+        hits.append(("zlib", "valid zlib header that decompresses to text"))
     if re.search(r"=[0-9A-Fa-f]{2}", t):
         hits.append(("qp", "contains quoted-printable sequences like =3D"))
     if re.fullmatch(r"[0-9A-Fa-f]+", t) and len(t) % 2 == 0 and len(t) >= 4:

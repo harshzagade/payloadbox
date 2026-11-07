@@ -93,6 +93,29 @@ class TestKnownVectors(unittest.TestCase):
         with self.assertRaises(ValueError):
             c.decode("Xk~0,Zv")
 
+    def test_zlib(self):
+        import zlib
+        c = CODECS["zlib"]
+        # known vector: level-9 compression of b"hello"
+        self.assertEqual(c.encode("hello"),
+                         zlib.compress(b"hello", 9).decode("latin-1"))
+        self.assertEqual(c.decode(c.encode("hello")), "hello")
+        self.assertEqual(c.encode(""), zlib.compress(b"", 9).decode("latin-1"))
+        self.assertEqual(c.decode(c.encode("")), "")
+        # unicode round-trips through the latin-1-mapped compressed bytes
+        self.assertEqual(c.decode(c.encode("héllo 🎯")), "héllo 🎯")
+        # composes with base64 for printable transport, inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "zlib,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "zlib,base64", "decode"), original)
+        # truncated streams and non-zlib input are rejected, not garbage
+        with self.assertRaises(ValueError):
+            c.decode(c.encode("hello")[:-2])
+        with self.assertRaises(ValueError):
+            c.decode("not a zlib stream")
+        with self.assertRaises(ValueError):
+            c.decode("x\x9c\xff\xff")
+
     def test_rot13(self):
         c = CODECS["rot13"]
         self.assertEqual(c.encode("Hello, World!"), "Uryyb, Jbeyq!")
@@ -281,6 +304,15 @@ class TestDetect(unittest.TestCase):
         # two "=" of padding is never valid base32, so not claimed
         self.assertNotIn("base32", [n for n, _ in detect("NBSWY3==")])
 
+    def test_detect_zlib(self):
+        blob = CODECS["zlib"].encode("hello world, this is a payload")
+        names = [n for n, _ in detect(blob)]
+        self.assertIn("zlib", names)
+        # plain text starting with 'x' and truncated streams are not claimed
+        self.assertNotIn("zlib", [n for n, _ in detect("xylophone")])
+        self.assertNotIn("zlib", [n for n, _ in detect(blob[:-2])])
+        self.assertNotIn("zlib", [n for n, _ in detect("x\x9c\xff\xff")])
+
     def test_detect_plain_text_no_hits(self):
         self.assertEqual(detect("hello world"), [])
 
@@ -313,6 +345,19 @@ class TestAutoDecode(unittest.TestCase):
         text, steps = auto_decode("NBSWY3DP")
         self.assertEqual(text, "hello")
         self.assertEqual(steps, ["base32"])
+
+    def test_auto_zlib(self):
+        blob = CODECS["zlib"].encode("<script>alert(1)</script>")
+        text, steps = auto_decode(blob)
+        self.assertEqual(text, "<script>alert(1)</script>")
+        self.assertEqual(steps, ["zlib"])
+
+    def test_auto_zlib_inside_base64(self):
+        # compress-then-encode chain: base64 peels first, then zlib
+        blob = CODECS["base64"].encode(CODECS["zlib"].encode("<script>"))
+        text, steps = auto_decode(blob)
+        self.assertEqual(text, "<script>")
+        self.assertEqual(steps, ["base64", "zlib"])
 
     def test_plain_text_unchanged(self):
         self.assertEqual(auto_decode("hello world"), ("hello world", []))

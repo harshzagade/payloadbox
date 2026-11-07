@@ -50,6 +50,7 @@ base64     Base64 (standard, padded)
 base64url  Base64 URL-safe (unpadded)
 base32     Base32 (RFC 4648, padded)
 base85     Base85 (RFC 1924, unpadded)
+zlib       zlib compression (latin-1 mapped, chain with base64)
 rot13      ROT13 Caesar shift
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
@@ -148,6 +149,20 @@ Xk~0{Zv
 
 $ payloadbox decode -c base85 "Xk~0{Zv"
 hello
+```
+
+zlib compress a payload (a compression layer for compress-then-encode
+chains; the compressed bytes are latin-1 mapped like UTF-16, so chain it
+with base64 or hex when the transport needs printable text — `detect`
+recognizes a zlib stream that decompresses to text, so `decode --auto`
+peels it):
+
+```bash
+$ payloadbox encode -c zlib,base64 "hello world, this is a payload"
+eMOaw4tIw43DicOJVyjDjy/DiknDkVEow4nDiCxWAMKiRMKFwoLDhMOKwpzDvMOEFADCqhcKw6g=
+
+$ payloadbox decode -c zlib,base64 "eMOaw4tIw43DicOJVyjDjy/DiknDkVEow4nDiCxWAMKiRMKFwoLDhMOKwpzDvMOEFADCqhcKw6g="
+hello world, this is a payload
 ```
 
 Quoted-printable encode an email-header payload (non-ASCII bytes become
