@@ -22,8 +22,8 @@ Requires Python 3.8+.
 ## Usage
 
 ```
-payloadbox encode [-c CHAIN] [--rot N] [TEXT]  # encode through a codec chain
-payloadbox decode [-c CHAIN] [--rot N] [TEXT]  # decode (chain undone in reverse)
+payloadbox encode [-c CHAIN] [--rot N] [--xor N] [TEXT]  # encode through a codec chain
+payloadbox decode [-c CHAIN] [--rot N] [--xor N] [TEXT]  # decode (chain undone in reverse)
 payloadbox decode --auto [TEXT]                # detect + decode until plain text
 payloadbox list                                # show available codecs
 payloadbox detect [--json] [TEXT]              # guess which encodings are present
@@ -66,6 +66,13 @@ Any Caesar shift is available as a chain step too: `rot1` … `rot25`
 (`rot13` is the registered name; `rotN` for other shifts is resolved
 dynamically). `--rot N` is shorthand for appending `rotN` to the chain, or
 for using it alone when `-c` is omitted.
+
+Any single-byte XOR key works the same way: `xor0` … `xor255` as chain
+steps (XOR is its own inverse on the bytes, so the same step undoes
+itself), with `--xor N` as the shorthand — applied after the chain (and
+after `--rot`), or alone when `-c` is omitted. The xored bytes are
+latin-1 mapped like UTF-16/zlib, so chain with base64 or hex for
+printable output.
 
 ### Examples
 

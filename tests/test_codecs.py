@@ -251,6 +251,29 @@ class TestJwt(unittest.TestCase):
         encoded = apply_chain(original, "url,rot13", "encode")
         self.assertEqual(apply_chain(encoded, "url,rot13", "decode"), original)
 
+    def test_xorN_chain(self):
+        self.assertEqual(apply_chain("hello", "xor1", "encode"), "idmmn")
+        self.assertEqual(apply_chain("idmmn", "xor1", "decode"), "hello")
+        # xor0 is the identity; xor is its own inverse
+        self.assertEqual(apply_chain("hello", "xor0", "encode"), "hello")
+        self.assertEqual(apply_chain("A", "xor65", "encode"), "\x00")
+        self.assertEqual(apply_chain("\x00", "xor65", "decode"), "A")
+        # unicode round-trips through the latin-1-mapped xored bytes
+        for key in (1, 65, 255):
+            original = "héllo 🎯 <script>"
+            encoded = apply_chain(original, f"xor{key}", "encode")
+            self.assertEqual(apply_chain(encoded, f"xor{key}", "decode"),
+                             original)
+        # xorN composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "xor42,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "xor42,base64", "decode"),
+                         original)
+
+    def test_xorN_out_of_range(self):
+        with self.assertRaises(ValueError):
+            apply_chain("x", "xor256", "encode")
+
     def test_rotN_out_of_range(self):
         with self.assertRaises(ValueError):
             apply_chain("x", "rot26", "encode")

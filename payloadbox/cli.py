@@ -43,11 +43,22 @@ def _rot_shift(value: str) -> int:
     return n
 
 
+def _xor_value(value: str) -> int:
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"xor key must be 0-255, got {value!r}")
+    if not 0 <= n <= 255:
+        raise argparse.ArgumentTypeError(f"xor key must be 0-255, got {n}")
+    return n
+
+
 def cmd_convert(args: argparse.Namespace, mode: str) -> int:
     if mode == "decode" and getattr(args, "auto", False):
-        if args.chain is not None or getattr(args, "rot", None) is not None:
-            print("error: --auto cannot be combined with -c/--chain or --rot",
-                  file=sys.stderr)
+        if (args.chain is not None or getattr(args, "rot", None) is not None
+                or getattr(args, "xor", None) is not None):
+            print("error: --auto cannot be combined with -c/--chain, "
+                  "--rot or --xor", file=sys.stderr)
             return 2
         try:
             text = _read_input(args)
@@ -63,6 +74,13 @@ def cmd_convert(args: argparse.Namespace, mode: str) -> int:
     if getattr(args, "rot", None) is not None:
         chain = f"{chain},rot{args.rot}" if args.chain is not None \
             else f"rot{args.rot}"
+    if getattr(args, "xor", None) is not None:
+        # Append when a chain or --rot step already exists; stand alone
+        # when --xor is the only option (mirrors the --rot branch above).
+        if args.chain is not None or getattr(args, "rot", None) is not None:
+            chain = f"{chain},xor{args.xor}"
+        else:
+            chain = f"xor{args.xor}"
     try:
         text = _read_input(args)
         result = apply_chain(text, chain, mode)
@@ -121,6 +139,10 @@ def build_parser() -> argparse.ArgumentParser:
     enc.add_argument("--rot", type=_rot_shift, default=None, metavar="N",
                      help="Caesar-shift the result by N (0-25); applied "
                           "after the chain, or alone when -c is omitted")
+    enc.add_argument("--xor", type=_xor_value, default=None, metavar="N",
+                     help="XOR every byte with N (0-255); applied after "
+                          "the chain (and after --rot), or alone when -c "
+                          "is omitted")
     add_io(enc)
     enc.set_defaults(func=lambda a: cmd_convert(a, "encode"))
 
@@ -131,6 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
     dec.add_argument("--rot", type=_rot_shift, default=None, metavar="N",
                      help="undo a Caesar shift of N (0-25); applied before "
                           "the chain is undone, or alone when -c is omitted")
+    dec.add_argument("--xor", type=_xor_value, default=None, metavar="N",
+                     help="undo a single-byte XOR with N (0-255); applied "
+                          "before the chain is undone, or alone when -c is "
+                          "omitted")
     dec.add_argument("--auto", action="store_true",
                      help="detect encodings and decode repeatedly until "
                           "plain text (loop-guarded); cannot combine with "

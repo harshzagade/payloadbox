@@ -71,6 +71,31 @@ class TestCli(unittest.TestCase):
         out = run("encode", "--rot", "26", "x")
         self.assertEqual(out.returncode, 2)
 
+    def test_xor_option(self):
+        enc = run("encode", "--xor", "1", "hello")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        self.assertEqual(enc.stdout.strip(), "idmmn")
+        dec = run("decode", "--xor", "1", "idmmn")
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "hello")
+        # --xor composes after an explicit chain (base64 output, then xor)
+        enc = run("encode", "-c", "base64", "--xor", "1", "hello")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        self.assertEqual(enc.stdout.strip(), "`FWrcF9<")
+        dec = run("decode", "-c", "base64", "--xor", "1", "`FWrcF9<")
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "hello")
+        # --rot and --xor together: rot applies first, then xor
+        enc = run("encode", "--rot", "1", "--xor", "1", "hello")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        dec = run("decode", "--rot", "1", "--xor", "1", enc.stdout.strip())
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "hello")
+        out = run("encode", "--xor", "256", "x")
+        self.assertEqual(out.returncode, 2)
+        out = run("decode", "--auto", "--xor", "1", "x")
+        self.assertEqual(out.returncode, 2)
+
     def test_auto_decode_cli(self):
         out = run("decode", "--auto", "%253Cscript%253E")
         self.assertEqual(out.returncode, 0, out.stderr)

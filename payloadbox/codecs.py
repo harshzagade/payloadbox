@@ -232,6 +232,42 @@ def _looks_zlib(t: str) -> bool:
 
 
 # ------------------------------------------------------------ rot ----------
+_XOR_RE = re.compile(r"^xor(\d+)$")
+
+
+def xor_encode(s: str, key: int) -> str:
+    """XOR every UTF-8 byte with ``key``; result latin-1 mapped like utf16.
+
+    The xored bytes are mapped 1:1 to chars so the result stays a plain
+    str; chain with base64/hex for printable output.
+    """
+    return bytes(b ^ key for b in _to_bytes(s)).decode("latin-1")
+
+
+def xor_decode(s: str, key: int) -> str:
+    """Undo ``xor_encode``: latin-1-encode back to the xored bytes first.
+
+    XOR is its own inverse on the bytes, but the str layer is not
+    symmetric — encode maps UTF-8 bytes to latin-1 chars, so decode must
+    map those chars back to bytes with latin-1 (UTF-8 here would expand
+    every char >= 0x80 and corrupt the round-trip).
+    """
+    raw = bytes(b ^ key for b in s.encode("latin-1"))
+    return _from_bytes(raw)
+
+
+def make_xor_codec(key: int) -> Codec:
+    """Build the Codec for an ``xorN`` chain name (0 <= N <= 255)."""
+    if not 0 <= key <= 255:
+        raise ValueError(f"xor key must be 0-255, got {key}")
+    return Codec(
+        f"xor{key}",
+        f"Single-byte XOR with {key} (0x{key:02x})",
+        lambda s, n=key: xor_encode(s, n),
+        lambda s, n=key: xor_decode(s, n),
+    )
+
+
 _ROT_RE = re.compile(r"^rot(\d+)$")
 
 
@@ -432,12 +468,15 @@ CODECS: dict[str, Codec] = {
 
 
 def resolve_codec(name: str) -> Codec:
-    """Look up a chain name: a registered codec, or a dynamic ``rotN``."""
+    """Look up a chain name: a registered codec, or a dynamic ``rotN``/``xorN``."""
     if name in CODECS:
         return CODECS[name]
     m = _ROT_RE.match(name)
     if m:
         return make_rot_codec(int(m.group(1)))
+    m = _XOR_RE.match(name)
+    if m:
+        return make_xor_codec(int(m.group(1)))
     raise KeyError(f"unknown codec(s): {name}")
 
 
