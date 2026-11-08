@@ -122,6 +122,33 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.decode("Uryyb, Jbeyq!"), "Hello, World!")
         self.assertEqual(c.encode("123!@#"), "123!@#")  # non-letters untouched
 
+    def test_punycode(self):
+        c = CODECS["punycode"]
+        # domain-shaped input: per-label IDNA (xn-- form)
+        self.assertEqual(c.encode("münchen.de"), "xn--mnchen-3ya.de")
+        self.assertEqual(c.decode("xn--mnchen-3ya.de"), "münchen.de")
+        self.assertEqual(c.encode("münchen"), "xn--mnchen-3ya")
+        self.assertEqual(c.decode("xn--mnchen-3ya"), "münchen")
+        # ASCII domains pass through unchanged
+        self.assertEqual(c.encode("example.com"), "example.com")
+        self.assertEqual(c.decode("example.com"), "example.com")
+        # non-domain strings: raw RFC 3492 punycode of the whole string
+        self.assertEqual(c.encode("<script>"), "<script>-")
+        self.assertEqual(c.decode("<script>-"), "<script>")
+        self.assertEqual(c.encode(""), "")
+        self.assertEqual(c.decode(""), "")
+        # unicode round-trips through both paths
+        self.assertEqual(c.decode(c.encode("héllo wörld ✓")),
+                         "héllo wörld ✓")
+        # composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "punycode,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "punycode,base64", "decode"),
+                         original)
+        # malformed punycode is rejected, not garbage
+        with self.assertRaises(ValueError):
+            c.decode("xn--!")
+
     def test_rev(self):
         c = CODECS["rev"]
         self.assertEqual(c.encode("hello"), "olleh")
@@ -353,6 +380,12 @@ class TestDetect(unittest.TestCase):
         self.assertNotIn("zlib", [n for n, _ in detect(blob[:-2])])
         self.assertNotIn("zlib", [n for n, _ in detect("x\x9c\xff\xff")])
 
+    def test_detect_punycode(self):
+        self.assertIn("punycode",
+                      [n for n, _ in detect("xn--mnchen-3ya.de")])
+        self.assertNotIn("punycode", [n for n, _ in detect("example.com")])
+        self.assertNotIn("punycode", [n for n, _ in detect("hello world")])
+
     def test_detect_plain_text_no_hits(self):
         self.assertEqual(detect("hello world"), [])
 
@@ -398,6 +431,11 @@ class TestAutoDecode(unittest.TestCase):
         text, steps = auto_decode(blob)
         self.assertEqual(text, "<script>")
         self.assertEqual(steps, ["base64", "zlib"])
+
+    def test_auto_punycode(self):
+        text, steps = auto_decode("xn--mnchen-3ya.de")
+        self.assertEqual(text, "münchen.de")
+        self.assertEqual(steps, ["punycode"])
 
     def test_plain_text_unchanged(self):
         self.assertEqual(auto_decode("hello world"), ("hello world", []))

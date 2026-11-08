@@ -231,6 +231,77 @@ def _looks_zlib(t: str) -> bool:
     return True
 
 
+# -------------------------------------------------------- punycode --------
+_DOMAIN_LABEL_RE = re.compile(r"^[A-Za-z0-9_\-\u0080-\U0010ffff]+$")
+_XN_LABEL_RE = re.compile(r"(?:^|\.)xn--[A-Za-z0-9-]+")
+
+
+def _is_domain_shaped(s: str) -> bool:
+    """True when ``s`` looks like a hostname: dot-separated labels of
+    letters, digits, hyphens and non-ASCII chars, no whitespace or
+    punctuation. Such strings get per-label IDNA handling; anything else
+    falls back to raw punycode of the whole string.
+    """
+    if not s or any(ch.isspace() for ch in s):
+        return False
+    return all(_DOMAIN_LABEL_RE.match(label) for label in s.split(".")
+               if label) and all(s.split("."))
+
+
+def punycode_encode(s: str) -> str:
+    """IDNA/punycode encode for internationalized-domain payload strings.
+
+    Domain-shaped input is encoded per label (``münchen.de`` becomes
+    ``xn--mnchen-3ya.de``); any other string gets raw RFC 3492 punycode
+    of the whole string, so the codec still round-trips arbitrary text.
+    """
+    if not s:
+        return ""
+    try:
+        if _is_domain_shaped(s):
+            try:
+                return ".".join(
+                    label.encode("idna").decode("ascii")
+                    for label in s.split(".")
+                )
+            except UnicodeError:
+                pass  # invalid label for IDNA: fall back to raw punycode
+        return s.encode("punycode").decode("ascii")
+    except UnicodeError as e:
+        raise ValueError(f"cannot punycode-encode input: {e}") from e
+
+
+def punycode_decode(s: str) -> str:
+    """Undo ``punycode_encode``: ``xn--`` labels via IDNA, anything else
+    via raw RFC 3492 punycode decode.
+
+    Mirrors the encode decision on purpose: raw punycode decode is not
+    the identity on plain words (``hello`` decodes to CJK characters),
+    so a domain-shaped string with no ``xn--`` label is returned
+    unchanged — encode left ASCII domains untouched. A bare raw-punycode
+    string like ``mnchen-3ya`` (no ``xn--`` prefix) is therefore also
+    returned unchanged; the codec's own encode always produces the
+    ``xn--`` form for domains.
+    """
+    if not s:
+        return ""
+    try:
+        if _XN_LABEL_RE.search(s):
+            try:
+                return ".".join(
+                    label.encode("ascii").decode("idna")
+                    if label.startswith("xn--") else label
+                    for label in s.split(".")
+                )
+            except UnicodeError as e:
+                raise ValueError(f"invalid IDNA label in {s!r}: {e}") from e
+        if _is_domain_shaped(s):
+            return s
+        return s.encode("ascii").decode("punycode")
+    except UnicodeError as e:
+        raise ValueError(f"cannot punycode-decode input: {e}") from e
+
+
 # ------------------------------------------------------------ rev ----------
 def rev_encode(s: str) -> str:
     """Reverse the string — a trivial bypass layer, its own inverse."""
@@ -466,6 +537,8 @@ CODECS: dict[str, Codec] = {
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
         Codec("rev", "String reversal (its own inverse)",
               rev_encode, rev_decode),
+        Codec("punycode", "IDNA/punycode (xn-- labels, RFC 3492)",
+              punycode_encode, punycode_decode),
         Codec("utf16le", "UTF-16LE bytes, latin-1 mapped (BOM tolerated)",
               utf16le_encode, utf16le_decode),
         Codec("utf16be", "UTF-16BE bytes, latin-1 mapped (BOM tolerated)",
@@ -541,6 +614,8 @@ def detect(text: str) -> list[tuple[str, str]]:
         hits.append(("zlib", "valid zlib header that decompresses to text"))
     if re.search(r"=[0-9A-Fa-f]{2}", t):
         hits.append(("qp", "contains quoted-printable sequences like =3D"))
+    if _XN_LABEL_RE.search(t):
+        hits.append(("punycode", "contains IDNA xn-- label"))
     if re.fullmatch(r"[0-9A-Fa-f]+", t) and len(t) % 2 == 0 and len(t) >= 4:
         hits.append(("hex", "even-length hex-only string"))
     # Base32 before base64: an uppercase-only A-Z2-7 blob of length % 8 == 0

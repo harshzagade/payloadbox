@@ -53,6 +53,7 @@ base85     Base85 (RFC 1924, unpadded)
 zlib       zlib compression (latin-1 mapped, chain with base64)
 rot13      ROT13 Caesar shift
 rev        String reversal (its own inverse)
+punycode   IDNA/punycode (xn-- labels, RFC 3492)
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
 qp         Quoted-printable (=XX, MIME/email-header)
@@ -110,6 +111,18 @@ b2xsZWg=
 
 $ payloadbox decode -c rev,base64 "b2xsZWg="
 hello
+```
+
+Punycode-encode an internationalized domain (per-label IDNA, so
+`münchen.de` becomes its `xn--` form; `detect` flags `xn--` labels, so
+`decode --auto` peels them — plain ASCII domains pass through untouched):
+
+```bash
+$ payloadbox encode -c punycode "münchen.de"
+xn--mnchen-3ya.de
+
+$ payloadbox decode --auto "xn--mnchen-3ya.de"
+münchen.de
 ```
 
 UTF-16 encode a payload (a common filter-bypass layer — raw bytes are
@@ -247,7 +260,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-57 tests: known vectors per codec, round-trips (including unicode and empty
+68 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 
