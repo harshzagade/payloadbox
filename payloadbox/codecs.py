@@ -231,6 +231,16 @@ def _looks_zlib(t: str) -> bool:
     return True
 
 
+# ------------------------------------------------------------ rev ----------
+def rev_encode(s: str) -> str:
+    """Reverse the string — a trivial bypass layer, its own inverse."""
+    return s[::-1]
+
+
+def rev_decode(s: str) -> str:
+    return s[::-1]  # reversal is its own inverse
+
+
 # ------------------------------------------------------------ rot ----------
 _XOR_RE = re.compile(r"^xor(\d+)$")
 
@@ -454,6 +464,8 @@ CODECS: dict[str, Codec] = {
         Codec("zlib", "zlib compression (latin-1 mapped, chain with base64)",
               zlib_encode, zlib_decode),
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
+        Codec("rev", "String reversal (its own inverse)",
+              rev_encode, rev_decode),
         Codec("utf16le", "UTF-16LE bytes, latin-1 mapped (BOM tolerated)",
               utf16le_encode, utf16le_decode),
         Codec("utf16be", "UTF-16BE bytes, latin-1 mapped (BOM tolerated)",

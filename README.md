@@ -52,6 +52,7 @@ base32     Base32 (RFC 4648, padded)
 base85     Base85 (RFC 1924, unpadded)
 zlib       zlib compression (latin-1 mapped, chain with base64)
 rot13      ROT13 Caesar shift
+rev        String reversal (its own inverse)
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
 qp         Quoted-printable (=XX, MIME/email-header)
@@ -98,6 +99,17 @@ $ payloadbox encode -c url,rot5 "<script>"
 
 $ payloadbox encode -c base64 --rot 1 "hello"
 bHWtcH8=
+```
+
+Reverse a payload — the trivial bypass layer, its own inverse, so it
+composes with any chain:
+
+```bash
+$ payloadbox encode -c rev,base64 "hello"
+b2xsZWg=
+
+$ payloadbox decode -c rev,base64 "b2xsZWg="
+hello
 ```
 
 UTF-16 encode a payload (a common filter-bypass layer — raw bytes are

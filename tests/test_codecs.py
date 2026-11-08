@@ -122,6 +122,23 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.decode("Uryyb, Jbeyq!"), "Hello, World!")
         self.assertEqual(c.encode("123!@#"), "123!@#")  # non-letters untouched
 
+    def test_rev(self):
+        c = CODECS["rev"]
+        self.assertEqual(c.encode("hello"), "olleh")
+        self.assertEqual(c.decode("olleh"), "hello")
+        self.assertEqual(c.encode(""), "")
+        # reversal is its own inverse, and unicode round-trips
+        self.assertEqual(c.decode(c.encode("héllo 🎯")), "héllo 🎯")
+        # composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "rev,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "rev,base64", "decode"), original)
+        # a reversed base64 blob decodes through the chain, not alone
+        self.assertEqual(apply_chain("hello", "rev,base64", "encode"),
+                         "b2xsZWg=")
+        self.assertEqual(apply_chain("b2xsZWg=", "rev,base64", "decode"),
+                         "hello")
+
     def test_utf16le(self):
         c = CODECS["utf16le"]
         self.assertEqual(c.encode("AB"), "A\x00B\x00")
