@@ -444,6 +444,34 @@ def qp_decode(s: str) -> str:
     return _from_bytes(quopri.decodestring(s.encode("utf-8")))
 
 
+# ---------------------------------------------------------- jsonesc --------
+_JSONESC_RE = re.compile(r'\\(?:["\\/bfnrt]|u[0-9A-Fa-f]{4})')
+
+
+def jsonesc_encode(s: str) -> str:
+    """JSON string escaping via stdlib ``json`` — a chain step for JSON-body
+    payloads. Produces the quoted JSON string: quotes and backslashes are
+    escaped, control chars become \\n/\\uXXXX, non-ASCII becomes \\uXXXX
+    (``ensure_ascii``), so the output is safe inside a JSON body.
+    """
+    return json.dumps(s)
+
+
+def jsonesc_decode(s: str) -> str:
+    """Parse a quoted JSON string back to plain text.
+
+    Only JSON strings are accepted — numbers, objects, arrays and bare
+    words raise ValueError, since the codec layer is str -> str.
+    """
+    try:
+        out = json.loads(s)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"invalid JSON string: {e}") from e
+    if not isinstance(out, str):
+        raise ValueError("invalid JSON string: not a quoted string")
+    return out
+
+
 # ------------------------------------------------------------ jwt ----------
 def jwt_encode(s: str) -> str:
     """JWT is decode-only: there is no plain-text form to encode to."""
@@ -545,6 +573,8 @@ CODECS: dict[str, Codec] = {
               utf16be_encode, utf16be_decode),
         Codec("qp", "Quoted-printable (=XX, MIME/email-header)",
               qp_encode, qp_decode),
+        Codec("jsonesc", "JSON string escapes (quoted, \\\" \\n \\uXXXX)",
+              jsonesc_encode, jsonesc_decode),
         Codec("jwt", "JWT header/payload decode only "
               "(signature never verified)",
               jwt_encode, jwt_decode),
@@ -601,6 +631,13 @@ def detect(text: str) -> list[tuple[str, str]]:
         hits.append(("url", "contains percent-encoded sequences like %3C"))
     if re.search(r"&(#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);", t):
         hits.append(("html", "contains HTML entities like &lt;"))
+    # A quoted string carrying JSON escapes is a jsonesc layer; it goes
+    # before uni so --auto peels the outer JSON layer first and the
+    # \uXXXX escapes inside it second, instead of unescaping in place
+    # and leaving the quotes behind.
+    if (len(t) >= 2 and t.startswith('"') and t.endswith('"')
+            and _JSONESC_RE.search(t)):
+        hits.append(("jsonesc", r'quoted string with JSON escapes like \" or \n'))
     if re.search(r"\\u[0-9A-Fa-f]{4}", t):
         hits.append(("uni", r"contains \uXXXX escapes"))
     if re.search(r"\\x[0-9A-Fa-f]{2}", t):

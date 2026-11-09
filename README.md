@@ -57,6 +57,7 @@ punycode   IDNA/punycode (xn-- labels, RFC 3492)
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
 qp         Quoted-printable (=XX, MIME/email-header)
+jsonesc    JSON string escapes (quoted, \" \n \uXXXX)
 jwt        JWT header/payload decode only (signature never verified)
 ```
 
@@ -215,6 +216,22 @@ $ payloadbox encode -c uni "<img src=x onerror=alert(1)>"
 \u003c\u0069\u006d\u0067\u0020\u0073\u0072\u0063\u003d\u0078\u0020\u006f\u006e\u0065\u0072\u0072\u006f\u0072\u003d\u0061\u006c\u0065\u0072\u0074\u0028\u0031\u0029\u003e
 ```
 
+JSON-escape a payload for a JSON body (quotes and backslashes escaped,
+control characters as `\n`/`\uXXXX`, non-ASCII as `\uXXXX` — `detect`
+flags quoted strings carrying JSON escapes, so `decode --auto` peels
+the JSON layer before any `\uXXXX` escapes inside it):
+
+```bash
+$ payloadbox encode -c jsonesc 'a"b'
+"a\"b"
+
+$ payloadbox encode -c jsonesc "café"
+"caf\u00e9"
+
+$ payloadbox decode --auto '"\u003cscript\u003e"'
+<script>
+```
+
 Fully decode an unknown blob without naming the layers — `decode --auto`
 detects and peels one layer at a time until plain text, stopping on
 already-plain input, undecodable blobs, repeated results, or 20 steps
@@ -260,7 +277,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-68 tests: known vectors per codec, round-trips (including unicode and empty
+71 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 

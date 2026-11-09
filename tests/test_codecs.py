@@ -194,6 +194,32 @@ class TestKnownVectors(unittest.TestCase):
         encoded = apply_chain(original, "qp,base64", "encode")
         self.assertEqual(apply_chain(encoded, "qp,base64", "decode"), original)
 
+    def test_jsonesc(self):
+        c = CODECS["jsonesc"]
+        self.assertEqual(c.encode('a"b'), '"a\\"b"')
+        self.assertEqual(c.decode('"a\\"b"'), 'a"b')
+        self.assertEqual(c.encode("café"), '"caf\\u00e9"')
+        self.assertEqual(c.decode('"caf\\u00e9"'), "café")
+        self.assertEqual(c.encode("line1\nline2"), '"line1\\nline2"')
+        self.assertEqual(c.decode('"line1\\nline2"'), "line1\nline2")
+        self.assertEqual(c.encode(""), '""')
+        self.assertEqual(c.decode('""'), "")
+        # backslashes are escaped, not swallowed
+        self.assertEqual(c.encode("C:\\path"), '"C:\\\\path"')
+        self.assertEqual(c.decode('"C:\\\\path"'), "C:\\path")
+        # composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "jsonesc,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "jsonesc,base64", "decode"),
+                         original)
+        # only quoted JSON strings are accepted — numbers, objects,
+        # arrays, booleans and bare words are rejected, not coerced
+        for bad in ("hello", "123", '{"a": 1}', '["x"]', "true", "null",
+                    '"unterminated', '"a" "b"'):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    c.decode(bad)
+
     def test_utf16be(self):
         c = CODECS["utf16be"]
         self.assertEqual(c.encode("AB"), "\x00A\x00B")
@@ -393,6 +419,25 @@ class TestDetect(unittest.TestCase):
         self.assertIn("qp", [n for n, _ in detect("hello=20world")])
         self.assertIn("qp", [n for n, _ in detect("caf=C3=A9")])
 
+    def test_detect_jsonesc(self):
+        self.assertIn("jsonesc",
+                      [n for n, _ in detect('"a\\"b"')])
+        self.assertIn("jsonesc",
+                      [n for n, _ in detect('"caf\\u00e9"')])
+        self.assertIn("jsonesc",
+                      [n for n, _ in detect('"line1\\nline2"')])
+        # jsonesc is listed before uni, so --auto peels the outer JSON
+        # layer first instead of unescaping in place
+        names = [n for n, _ in detect('"\\u003cscript\\u003e"')]
+        self.assertLess(names.index("jsonesc"), names.index("uni"))
+        # a quoted string with no escapes is not claimed — it is
+        # indistinguishable from plain quoted text
+        self.assertNotIn("jsonesc", [n for n, _ in detect('"hello"')])
+        # unquoted escapes stay uni, not jsonesc
+        self.assertNotIn("jsonesc",
+                         [n for n, _ in detect("\\u003cscript\\u003e")])
+        self.assertNotIn("jsonesc", [n for n, _ in detect("hello world")])
+
     def test_detect_utf16(self):
         self.assertIn("utf16le", [n for n, _ in detect("h\x00e\x00l\x00l\x00o\x00")])
         self.assertIn("utf16be", [n for n, _ in detect("\x00h\x00e\x00l\x00l\x00o")])
@@ -436,6 +481,14 @@ class TestAutoDecode(unittest.TestCase):
         text, steps = auto_decode("xn--mnchen-3ya.de")
         self.assertEqual(text, "münchen.de")
         self.assertEqual(steps, ["punycode"])
+
+    def test_auto_jsonesc(self):
+        text, steps = auto_decode('"\\u003cscript\\u003e"')
+        self.assertEqual(text, "<script>")
+        self.assertEqual(steps, ["jsonesc"])
+        text, steps = auto_decode('"a\\"b"')
+        self.assertEqual(text, 'a"b')
+        self.assertEqual(steps, ["jsonesc"])
 
     def test_plain_text_unchanged(self):
         self.assertEqual(auto_decode("hello world"), ("hello world", []))
