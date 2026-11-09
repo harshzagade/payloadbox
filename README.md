@@ -139,7 +139,9 @@ hi
 ```
 
 Decode a JWT's header and payload into readable JSON (decode only — the
-signature segment is ignored, never verified):
+signature segment is ignored, never verified). `detect` flags
+three-segment base64url blobs as JWT-shaped, so `decode --auto` routes
+them to the `jwt` codec:
 
 ```bash
 $ payloadbox decode -c jwt "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
@@ -277,7 +279,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-71 tests: known vectors per codec, round-trips (including unicode and empty
+73 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 

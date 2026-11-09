@@ -617,6 +617,10 @@ _B64_RE = re.compile(r"^[A-Za-z0-9+/]{4,}={0,2}$")
 _B64URL_RE = re.compile(r"^[A-Za-z0-9\-_]+$")
 _B32_RE = re.compile(r"^[A-Z2-7]+={0,6}$")
 _B32_PADDINGS = (0, 1, 3, 4, 6)  # valid trailing "=" counts for base32
+# Three base64url segments of 4+ chars: header.payload.signature. Short
+# segments are excluded so dotted version strings like 1.2.3 are not
+# claimed; the jwt codec itself still validates the decoded segments.
+_JWT_RE = re.compile(r"^[A-Za-z0-9\-_]{4,}\.[A-Za-z0-9\-_]{4,}\.[A-Za-z0-9\-_]{4,}$")
 
 
 def detect(text: str) -> list[tuple[str, str]]:
@@ -653,6 +657,9 @@ def detect(text: str) -> list[tuple[str, str]]:
         hits.append(("qp", "contains quoted-printable sequences like =3D"))
     if _XN_LABEL_RE.search(t):
         hits.append(("punycode", "contains IDNA xn-- label"))
+    if _JWT_RE.match(t):
+        hits.append(("jwt", "three base64url segments — JWT-shaped "
+                     "(header.payload.signature)"))
     if re.fullmatch(r"[0-9A-Fa-f]+", t) and len(t) % 2 == 0 and len(t) >= 4:
         hits.append(("hex", "even-length hex-only string"))
     # Base32 before base64: an uppercase-only A-Z2-7 blob of length % 8 == 0

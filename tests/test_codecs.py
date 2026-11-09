@@ -412,6 +412,22 @@ class TestDetect(unittest.TestCase):
         self.assertNotIn("punycode", [n for n, _ in detect("example.com")])
         self.assertNotIn("punycode", [n for n, _ in detect("hello world")])
 
+    def test_detect_jwt_shape(self):
+        token = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+            ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ"
+            ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        self.assertIn("jwt", [n for n, _ in detect(token)])
+        # three segments of base64url chars are claimed even when the
+        # segments are not valid JWT JSON — the jwt codec validates
+        self.assertIn("jwt", [n for n, _ in detect("abcd.efgh.ijkl")])
+        # dotted version strings and short segments are not claimed
+        self.assertNotIn("jwt", [n for n, _ in detect("1.2.3")])
+        self.assertNotIn("jwt", [n for n, _ in detect("a.b.c")])
+        self.assertNotIn("jwt", [n for n, _ in detect("example.com")])
+        self.assertNotIn("jwt", [n for n, _ in detect("hello world")])
+
     def test_detect_plain_text_no_hits(self):
         self.assertEqual(detect("hello world"), [])
 
@@ -489,6 +505,22 @@ class TestAutoDecode(unittest.TestCase):
         text, steps = auto_decode('"a\\"b"')
         self.assertEqual(text, 'a"b')
         self.assertEqual(steps, ["jsonesc"])
+
+    def test_auto_jwt(self):
+        token = (
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+            ".eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ"
+            ".SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        )
+        text, steps = auto_decode(token)
+        self.assertEqual(steps, ["jwt"])
+        import json
+        out = json.loads(text)
+        self.assertEqual(out["header"], {"alg": "HS256", "typ": "JWT"})
+        self.assertEqual(out["payload"]["name"], "John Doe")
+        # a JWT-shaped blob that is not a real JWT is left unchanged
+        self.assertEqual(auto_decode("abcd.efgh.ijkl"),
+                         ("abcd.efgh.ijkl", []))
 
     def test_plain_text_unchanged(self):
         self.assertEqual(auto_decode("hello world"), ("hello world", []))
