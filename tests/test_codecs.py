@@ -1,7 +1,7 @@
 """Tests for payloadbox.codecs — known vectors + round-trips."""
 import unittest
 
-from payloadbox.codecs import CODECS, apply_chain, auto_decode, detect
+from payloadbox.codecs import CODECS, PRESETS, apply_chain, auto_decode, detect, expand_preset
 
 
 class TestKnownVectors(unittest.TestCase):
@@ -359,6 +359,41 @@ class TestJwt(unittest.TestCase):
     def test_hex_decode_rejects_odd_length(self):
         with self.assertRaises(ValueError):
             CODECS["hex"].decode("abc")
+
+
+class TestPresets(unittest.TestCase):
+    SAMPLES = ["", "<script>alert(1)</script>", "héllo ✓", "a b+c=d&e"]
+
+    def test_expand_preset_known(self):
+        self.assertEqual(expand_preset("waf"), "url,base64")
+        self.assertEqual(expand_preset("double"), "url,url")
+        self.assertEqual(expand_preset("WAF"), "url,base64")  # case-insensitive
+
+    def test_expand_preset_unknown(self):
+        with self.assertRaises(KeyError):
+            expand_preset("bogus")
+
+    def test_every_preset_round_trips(self):
+        for name in PRESETS:
+            for s in self.SAMPLES:
+                with self.subTest(preset=name, sample=repr(s)[:20]):
+                    blob = apply_chain(s, name, "encode")
+                    self.assertEqual(apply_chain(blob, name, "decode"), s)
+
+    def test_preset_matches_explicit_chain(self):
+        s = "<script>alert(1)</script>"
+        for name in PRESETS:
+            with self.subTest(preset=name):
+                self.assertEqual(apply_chain(s, name, "encode"),
+                                 apply_chain(s, expand_preset(name), "encode"))
+
+    def test_preset_as_chain_step(self):
+        s = "<script>"
+        blob = apply_chain(s, "waf,rot13", "encode")
+        self.assertEqual(blob,
+                         apply_chain(apply_chain(s, "waf", "encode"),
+                                     "rot13", "encode"))
+        self.assertEqual(apply_chain(blob, "waf,rot13", "decode"), s)
 
 
 class TestDetect(unittest.TestCase):

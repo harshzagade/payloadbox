@@ -595,16 +595,53 @@ def resolve_codec(name: str) -> Codec:
     raise KeyError(f"unknown codec(s): {name}")
 
 
+# -------------------------------------------------------- presets --------
+# Named chain presets: shortcuts for the most-used chains. A preset name
+# can be used with ``--preset NAME`` on the CLI, or as a step inside ``-c``
+# (it expands inline, so ``-c waf,rot13`` works too).
+PRESETS: dict[str, tuple[str, str]] = {
+    "waf": ("url,base64",
+            "classic WAF-bypass layering"),
+    "double": ("url,url",
+               "double percent-encoding (like url2)"),
+    "b64double": ("base64,base64",
+                  "double base64"),
+    "json": ("jsonesc,base64",
+             "JSON-escaped payload, base64-wrapped"),
+    "deep": ("url,html,uni,base64",
+             "heavy layering for stubborn filters"),
+}
+
+
+def expand_preset(name: str) -> str:
+    """Return the chain string a preset expands to (KeyError if unknown)."""
+    try:
+        return PRESETS[name.lower()][0]
+    except KeyError:
+        raise KeyError(
+            f"unknown preset: {name!r} "
+            f"(available: {', '.join(PRESETS)})"
+        ) from None
+
 
 def apply_chain(text: str, chain: str, mode: str) -> str:
     """Apply a comma-separated codec chain.
 
     ``encode`` applies codecs left to right; ``decode`` applies them in
     reverse so ``decode`` inverts ``encode`` for the same chain string.
+    Preset names expand inline to their chains before resolving.
     """
     if mode not in ("encode", "decode"):
         raise ValueError("mode must be 'encode' or 'decode'")
-    names = [c.strip().lower() for c in chain.split(",") if c.strip()]
+    names: list[str] = []
+    for token in chain.split(","):
+        token = token.strip().lower()
+        if not token:
+            continue
+        if token in PRESETS:
+            names.extend(PRESETS[token][0].split(","))
+        else:
+            names.append(token)
     codecs = [resolve_codec(n) for n in names]  # KeyError/ValueError on bad names
     seq = codecs if mode == "encode" else list(reversed(codecs))
     for codec in seq:

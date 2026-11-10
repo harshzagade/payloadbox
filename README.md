@@ -22,10 +22,10 @@ Requires Python 3.8+.
 ## Usage
 
 ```
-payloadbox encode [-c CHAIN] [--rot N] [--xor N] [TEXT]  # encode through a codec chain
-payloadbox decode [-c CHAIN] [--rot N] [--xor N] [TEXT]  # decode (chain undone in reverse)
+payloadbox encode [-c CHAIN] [--preset NAME] [--rot N] [--xor N] [TEXT]  # encode through a codec chain
+payloadbox decode [-c CHAIN] [--preset NAME] [--rot N] [--xor N] [TEXT]  # decode (chain undone in reverse)
 payloadbox decode --auto [TEXT]                # detect + decode until plain text
-payloadbox list                                # show available codecs
+payloadbox list                                # show available codecs and presets
 payloadbox detect [--json] [TEXT]              # guess which encodings are present
 ```
 
@@ -77,6 +77,23 @@ after `--rot`), or alone when `-c` is omitted. The xored bytes are
 latin-1 mapped like UTF-16/zlib, so chain with base64 or hex for
 printable output.
 
+### Presets
+
+Named shortcuts for the most-used chains, shown by `payloadbox list`:
+
+```
+waf        url,base64  classic WAF-bypass layering
+double     url,url  double percent-encoding (like url2)
+b64double  base64,base64  double base64
+json       jsonesc,base64  JSON-escaped payload, base64-wrapped
+deep       url,html,uni,base64  heavy layering for stubborn filters
+```
+
+Use one with `--preset NAME` (it cannot combine with `-c`, but `--rot`
+and `--xor` still append after it), or as a step inside `-c` — it expands
+inline, so `-c waf,rot13` works too. `decode --preset NAME` undoes the
+same chain in reverse.
+
 ### Examples
 
 Chain encodings for a WAF-bypass test — `decode` undoes the same chain in
@@ -112,6 +129,20 @@ b2xsZWg=
 
 $ payloadbox decode -c rev,base64 "b2xsZWg="
 hello
+```
+
+Use a preset instead of spelling out the chain — same result as
+`-c url,base64`, and `decode` undoes it in reverse:
+
+```bash
+$ payloadbox encode --preset waf "<script>"
+JTNDc2NyaXB0JTNF
+
+$ payloadbox decode --preset waf "JTNDc2NyaXB0JTNF"
+<script>
+
+$ payloadbox encode --preset double "<script>"
+%253Cscript%253E
 ```
 
 Punycode-encode an internationalized domain (per-label IDNA, so
@@ -279,8 +310,8 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-73 tests: known vectors per codec, round-trips (including unicode and empty
-input), chain inversion, detector heuristics, JWT decode-only behaviour,
+80 tests: known vectors per codec, round-trips (including unicode and empty
+input), chain inversion, named presets, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 
 ## License

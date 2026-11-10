@@ -107,6 +107,40 @@ class TestCli(unittest.TestCase):
         out = run("decode", "--auto", "-c", "url", "%3C")
         self.assertEqual(out.returncode, 2)
 
+    def test_preset_option(self):
+        enc = run("encode", "--preset", "waf", "<script>")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        ref = run("encode", "-c", "url,base64", "<script>")
+        self.assertEqual(enc.stdout, ref.stdout)
+        dec = run("decode", "--preset", "waf", enc.stdout.strip())
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "<script>")
+        # double preset is double percent-encoding, like url2
+        enc = run("encode", "--preset", "double", "<script>")
+        ref = run("encode", "-c", "url2", "<script>")
+        self.assertEqual(enc.stdout, ref.stdout)
+        # --preset composes with --rot
+        enc = run("encode", "--preset", "waf", "--rot", "1", "hello")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        dec = run("decode", "--preset", "waf", "--rot", "1", enc.stdout.strip())
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "hello")
+        # unknown preset errors
+        out = run("encode", "--preset", "bogus", "x")
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("unknown preset", out.stderr)
+        # --preset conflicts with -c and with --auto
+        out = run("encode", "--preset", "waf", "-c", "url", "x")
+        self.assertEqual(out.returncode, 2)
+        out = run("decode", "--auto", "--preset", "waf", "x")
+        self.assertEqual(out.returncode, 2)
+
+    def test_list_shows_presets(self):
+        out = run("list")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        for name in ("waf", "double", "b64double", "json", "deep"):
+            self.assertIn(name, out.stdout)
+
     def test_version(self):
         out = run("--version")
         self.assertEqual(out.returncode, 0)

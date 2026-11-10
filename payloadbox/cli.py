@@ -6,7 +6,7 @@ import json
 import sys
 
 from . import __version__
-from .codecs import CODECS, apply_chain, auto_decode, detect
+from .codecs import CODECS, PRESETS, apply_chain, auto_decode, detect, expand_preset
 
 
 def _read_input(args: argparse.Namespace) -> str:
@@ -55,10 +55,11 @@ def _xor_value(value: str) -> int:
 
 def cmd_convert(args: argparse.Namespace, mode: str) -> int:
     if mode == "decode" and getattr(args, "auto", False):
-        if (args.chain is not None or getattr(args, "rot", None) is not None
+        if (args.chain is not None or getattr(args, "preset", None) is not None
+                or getattr(args, "rot", None) is not None
                 or getattr(args, "xor", None) is not None):
             print("error: --auto cannot be combined with -c/--chain, "
-                  "--rot or --xor", file=sys.stderr)
+                  "--preset, --rot or --xor", file=sys.stderr)
             return 2
         try:
             text = _read_input(args)
@@ -70,14 +71,27 @@ def cmd_convert(args: argparse.Namespace, mode: str) -> int:
             print(f"decoded via: {' -> '.join(steps)}", file=sys.stderr)
         _write_output(args, result)
         return 0
-    chain = args.chain if args.chain is not None else "url"
+    preset = getattr(args, "preset", None)
+    if preset is not None and args.chain is not None:
+        print("error: --preset cannot be combined with -c/--chain",
+              file=sys.stderr)
+        return 2
+    has_base = args.chain is not None or preset is not None
+    if preset is not None:
+        try:
+            chain = expand_preset(preset)
+        except KeyError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+    else:
+        chain = args.chain if args.chain is not None else "url"
     if getattr(args, "rot", None) is not None:
-        chain = f"{chain},rot{args.rot}" if args.chain is not None \
+        chain = f"{chain},rot{args.rot}" if has_base \
             else f"rot{args.rot}"
     if getattr(args, "xor", None) is not None:
-        # Append when a chain or --rot step already exists; stand alone
-        # when --xor is the only option (mirrors the --rot branch above).
-        if args.chain is not None or getattr(args, "rot", None) is not None:
+        # Append when a chain, preset or --rot step already exists; stand
+        # alone when --xor is the only option (mirrors the --rot branch).
+        if has_base or getattr(args, "rot", None) is not None:
             chain = f"{chain},xor{args.xor}"
         else:
             chain = f"xor{args.xor}"
@@ -98,6 +112,11 @@ def cmd_list(_args: argparse.Namespace) -> int:
     width = max(len(c.name) for c in CODECS.values())
     for codec in CODECS.values():
         print(f"{codec.name:<{width}}  {codec.description}")
+    print()
+    print("Presets (named chains — --preset NAME, or a -c step):")
+    width = max(len(name) for name in PRESETS)
+    for name, (chain, desc) in PRESETS.items():
+        print(f"{name:<{width}}  {chain}  {desc}")
     return 0
 
 
@@ -136,6 +155,9 @@ def build_parser() -> argparse.ArgumentParser:
     enc.add_argument("-c", "--chain", default=None,
                      help="comma-separated codecs, applied left to right "
                           "(default: url)")
+    enc.add_argument("--preset", default=None, metavar="NAME",
+                     help="named chain shortcut (see list); cannot combine "
+                          "with -c/--chain")
     enc.add_argument("--rot", type=_rot_shift, default=None, metavar="N",
                      help="Caesar-shift the result by N (0-25); applied "
                           "after the chain, or alone when -c is omitted")
@@ -150,6 +172,9 @@ def build_parser() -> argparse.ArgumentParser:
     dec.add_argument("-c", "--chain", default=None,
                      help="same chain string used for encoding; it is "
                           "undone in reverse order")
+    dec.add_argument("--preset", default=None, metavar="NAME",
+                     help="named chain shortcut (see list); cannot combine "
+                          "with -c/--chain or --auto")
     dec.add_argument("--rot", type=_rot_shift, default=None, metavar="N",
                      help="undo a Caesar shift of N (0-25); applied before "
                           "the chain is undone, or alone when -c is omitted")
@@ -160,7 +185,7 @@ def build_parser() -> argparse.ArgumentParser:
     dec.add_argument("--auto", action="store_true",
                      help="detect encodings and decode repeatedly until "
                           "plain text (loop-guarded); cannot combine with "
-                          "-c/--chain or --rot")
+                          "-c/--chain, --preset or --rot")
     add_io(dec)
     dec.set_defaults(func=lambda a: cmd_convert(a, "decode"))
 
