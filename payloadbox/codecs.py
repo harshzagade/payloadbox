@@ -429,6 +429,65 @@ def utf16be_decode(s: str) -> str:
     return _utf16_decode(s, "be")
 
 
+# ------------------------------------------------------------ utf7 --------
+# UTF-7 (RFC 2152): the classic +ADw- XSS filter-bypass layer.
+#
+# Python's stdlib utf-7 encoder leaves ASCII punctuation (including < >)
+# direct, which defeats the bypass use, so encode uses the strict RFC 2152
+# rule — only Set D chars (alphanumerics, '(),-./:? and space) stay
+# direct, everything else is shifted as UTF-16BE base64 — while decode
+# uses the stdlib utf-7 codec, which accepts both the strict form and
+# the stdlib encoder's own looser output.
+_UTF7_DIRECT = set(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
+    "'(),-./:? "
+)
+
+
+def utf7_encode(s: str) -> str:
+    """Strict RFC 2152 UTF-7: ``<script>`` becomes ``+ADw-script+AD4-``.
+
+    Maximal runs of non-Set-D chars are UTF-16BE base64 (padding
+    stripped) wrapped in ``+...+``; a lone ``+`` becomes ``+-``, the
+    RFC's own escape. Surrogate pairs (astral chars) encode via UTF-16BE.
+    """
+    if not s:
+        return ""
+    out: list[str] = []
+    i, n = 0, len(s)
+    while i < n:
+        if s[i] in _UTF7_DIRECT:
+            out.append(s[i])
+            i += 1
+            continue
+        j = i
+        while j < n and s[j] not in _UTF7_DIRECT:
+            j += 1
+        run = s[i:j]
+        if run == "+":
+            out.append("+-")
+        else:
+            b64 = base64.b64encode(run.encode("utf-16-be")).decode("ascii")
+            out.append(f"+{b64.rstrip('=')}-")
+        i = j
+    return "".join(out)
+
+
+def utf7_decode(s: str) -> str:
+    """Decode UTF-7 via the stdlib codec (``+ADw-`` -> ``<``).
+
+    The stdlib decoder is strict: unterminated shifts and invalid base64
+    runs raise, so plain text carrying a stray ``+`` fails loudly instead
+    of decoding to garbage.
+    """
+    if not s:
+        return ""
+    try:
+        return s.encode("ascii").decode("utf-7")
+    except (UnicodeDecodeError, UnicodeEncodeError, ValueError) as e:
+        raise ValueError(f"invalid UTF-7 input: {e}") from e
+
+
 # ------------------------------------------------------------ qp -----------
 def qp_encode(s: str) -> str:
     """Quoted-printable via stdlib ``quopri`` (email-header / MIME layer).
@@ -571,6 +630,8 @@ CODECS: dict[str, Codec] = {
               utf16le_encode, utf16le_decode),
         Codec("utf16be", "UTF-16BE bytes, latin-1 mapped (BOM tolerated)",
               utf16be_encode, utf16be_decode),
+        Codec("utf7", "UTF-7 (+ADw- shifts, RFC 2152)",
+              utf7_encode, utf7_decode),
         Codec("qp", "Quoted-printable (=XX, MIME/email-header)",
               qp_encode, qp_decode),
         Codec("jsonesc", "JSON string escapes (quoted, \\\" \\n \\uXXXX)",
@@ -658,6 +719,10 @@ _B32_PADDINGS = (0, 1, 3, 4, 6)  # valid trailing "=" counts for base32
 # segments are excluded so dotted version strings like 1.2.3 are not
 # claimed; the jwt codec itself still validates the decoded segments.
 _JWT_RE = re.compile(r"^[A-Za-z0-9\-_]{4,}\.[A-Za-z0-9\-_]{4,}\.[A-Za-z0-9\-_]{4,}$")
+# A UTF-7 shift: +<base64>- with at least 3 base64 chars (one UTF-16 code
+# unit is 2 bytes = 3 base64 chars, so shorter runs cannot be valid UTF-7;
+# this also keeps "+-" and "C++-"-style text unflagged).
+_UTF7_RE = re.compile(r"\+[A-Za-z0-9+/]{3,}-")
 
 
 def detect(text: str) -> list[tuple[str, str]]:
@@ -692,6 +757,8 @@ def detect(text: str) -> list[tuple[str, str]]:
         hits.append(("zlib", "valid zlib header that decompresses to text"))
     if re.search(r"=[0-9A-Fa-f]{2}", t):
         hits.append(("qp", "contains quoted-printable sequences like =3D"))
+    if _UTF7_RE.search(t):
+        hits.append(("utf7", "contains a UTF-7 shift like +ADw-"))
     if _XN_LABEL_RE.search(t):
         hits.append(("punycode", "contains IDNA xn-- label"))
     if _JWT_RE.match(t):

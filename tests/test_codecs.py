@@ -227,6 +227,34 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.decode("\xfe\xff\x00A\x00B"), "AB")
         self.assertEqual(c.decode("\ufeff\x00A\x00B"), "AB")
 
+    def test_utf7(self):
+        c = CODECS["utf7"]
+        # the classic filter-bypass form: < and > shift, letters stay direct
+        self.assertEqual(c.encode("<script>"), "+ADw-script+AD4-")
+        self.assertEqual(c.decode("+ADw-script+AD4-"), "<script>")
+        # non-ASCII shifts too; plain ASCII words pass through untouched
+        self.assertEqual(c.encode("café"), "caf+AOk-")
+        self.assertEqual(c.decode("caf+AOk-"), "café")
+        self.assertEqual(c.encode("hello"), "hello")
+        self.assertEqual(c.decode("hello"), "hello")
+        # a literal plus is the RFC's own +- escape, not a shift start
+        self.assertEqual(c.encode("a+b"), "a+-b")
+        self.assertEqual(c.decode("a+-b"), "a+b")
+        # decode also accepts the stdlib encoder's looser output
+        import codecs as _codecs
+        loose = _codecs.encode("<script>", "utf-7").decode("ascii")
+        self.assertEqual(c.decode(loose), "<script>")
+        # invalid shifts fail loudly instead of decoding to garbage
+        for bad in ("a+b", "C++-based", "+ZZZ-"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(ValueError):
+                    c.decode(bad)
+        # composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "utf7,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "utf7,base64", "decode"),
+                         original)
+
 
 class TestRoundTrips(unittest.TestCase):
     SAMPLES = ["", "<script>alert('xss')</script>", "héllo wörld ✓",
@@ -489,6 +517,15 @@ class TestDetect(unittest.TestCase):
                          [n for n, _ in detect("\\u003cscript\\u003e")])
         self.assertNotIn("jsonesc", [n for n, _ in detect("hello world")])
 
+    def test_detect_utf7(self):
+        hits = detect("+ADw-script+AD4-")
+        self.assertTrue(any(name == "utf7" for name, _ in hits))
+        # "+-" and "C++-"-style text are not UTF-7 shifts
+        self.assertFalse(any(name == "utf7"
+                             for name, _ in detect("C++-based")))
+        self.assertFalse(any(name == "utf7"
+                             for name, _ in detect("a+-b")))
+
     def test_detect_utf16(self):
         self.assertIn("utf16le", [n for n, _ in detect("h\x00e\x00l\x00l\x00o\x00")])
         self.assertIn("utf16be", [n for n, _ in detect("\x00h\x00e\x00l\x00l\x00o")])
@@ -572,6 +609,11 @@ class TestAutoDecode(unittest.TestCase):
 
     def test_detect_empty_no_hits(self):
         self.assertEqual(detect(""), [])
+
+    def test_auto_utf7(self):
+        text, steps = auto_decode("+ADw-script+AD4-")
+        self.assertEqual(text, "<script>")
+        self.assertEqual(steps, ["utf7"])
 
     def test_auto_utf16_of_url(self):
         blob = CODECS["utf16le"].encode(CODECS["url"].encode("<script>"))

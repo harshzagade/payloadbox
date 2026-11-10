@@ -56,6 +56,7 @@ rev        String reversal (its own inverse)
 punycode   IDNA/punycode (xn-- labels, RFC 3492)
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
 utf16be    UTF-16BE bytes, latin-1 mapped (BOM tolerated)
+utf7       UTF-7 (+ADw- shifts, RFC 2152)
 qp         Quoted-printable (=XX, MIME/email-header)
 jsonesc    JSON string escapes (quoted, \" \n \uXXXX)
 jwt        JWT header/payload decode only (signature never verified)
@@ -167,6 +168,19 @@ $ payloadbox encode -c utf16le "hi" | od -An -tx1
 
 $ printf 'h\0i\0' | payloadbox decode -c utf16le
 hi
+```
+
+UTF-7 encode a payload (the classic `+ADw-` XSS filter-bypass layer —
+encode uses the strict RFC 2152 rule so `<` becomes `+ADw-`, while
+decode uses the stdlib utf-7 codec and also accepts its looser output;
+`detect` flags `+...-` shifts, so `decode --auto` peels them):
+
+```bash
+$ payloadbox encode -c utf7 "<script>"
++ADw-script+AD4-
+
+$ payloadbox decode --auto "+ADw-script+AD4-"
+<script>
 ```
 
 Decode a JWT's header and payload into readable JSON (decode only — the
@@ -310,7 +324,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-80 tests: known vectors per codec, round-trips (including unicode and empty
+84 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, named presets, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 

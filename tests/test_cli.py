@@ -141,6 +141,18 @@ class TestCli(unittest.TestCase):
         for name in ("waf", "double", "b64double", "json", "deep"):
             self.assertIn(name, out.stdout)
 
+    def test_utf7_codec_cli(self):
+        enc = run("encode", "-c", "utf7", "<script>")
+        self.assertEqual(enc.returncode, 0, enc.stderr)
+        self.assertEqual(enc.stdout.strip(), "+ADw-script+AD4-")
+        dec = run("decode", "-c", "utf7", "+ADw-script+AD4-")
+        self.assertEqual(dec.returncode, 0, dec.stderr)
+        self.assertEqual(dec.stdout.strip(), "<script>")
+        out = run("decode", "--auto", "+ADw-script+AD4-")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(out.stdout.strip(), "<script>")
+        self.assertIn("utf7", out.stderr)
+
     def test_version(self):
         out = run("--version")
         self.assertEqual(out.returncode, 0)
