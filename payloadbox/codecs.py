@@ -411,6 +411,30 @@ def rot47_decode(s: str) -> str:
     return rot47_encode(s)  # ROT47 is its own inverse
 
 
+# ------------------------------------------------------------ atbash ------
+def atbash_encode(s: str) -> str:
+    """Atbash: mirror the alphabet (a<->z, A<->Z), its own inverse.
+
+    The classic alphabet-mirror layer, composing with the other codecs
+    like rev. Non-letters pass through untouched. Deliberately not added
+    to detect(): any alphabetic string could be atbash, so there is no
+    reliable signal (same as base85/rot47).
+    """
+    out: list[str] = []
+    for ch in s:
+        if "a" <= ch <= "z":
+            out.append(chr(ord("a") + ord("z") - ord(ch)))
+        elif "A" <= ch <= "Z":
+            out.append(chr(ord("A") + ord("Z") - ord(ch)))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def atbash_decode(s: str) -> str:
+    return atbash_encode(s)  # atbash is its own inverse
+
+
 # ---------------------------------------------------------- utf16 --------
 def _utf16_encode(s: str, endian: str) -> str:
     """Encode to raw UTF-16 bytes, carried through the str layer via latin-1.
@@ -649,6 +673,8 @@ CODECS: dict[str, Codec] = {
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
         Codec("rot47", "ROT47 printable-ASCII rotation (its own inverse)",
               rot47_encode, rot47_decode),
+        Codec("atbash", "Atbash alphabet mirror a<->z (its own inverse)",
+              atbash_encode, atbash_decode),
         Codec("rev", "String reversal (its own inverse)",
               rev_encode, rev_decode),
         Codec("punycode", "IDNA/punycode (xn-- labels, RFC 3492)",

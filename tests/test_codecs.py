@@ -139,6 +139,22 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(apply_chain(encoded, "rot47,base64", "decode"),
                          original)
 
+    def test_atbash(self):
+        c = CODECS["atbash"]
+        self.assertEqual(c.encode("Hello, World!"), "Svool, Dliow!")
+        self.assertEqual(c.decode("Svool, Dliow!"), "Hello, World!")
+        self.assertEqual(c.encode("AbcXyz 123"), "ZyxCba 123")
+        self.assertEqual(c.encode(""), "")
+        # non-letters pass through untouched
+        self.assertEqual(c.encode("123!@#"), "123!@#")
+        # its own inverse, unicode round-trips, composes with other codecs
+        self.assertEqual(c.decode(c.encode("héllo 🎯")), "héllo 🎯")
+        original = "<script>alert(1)</script>"
+        self.assertEqual(c.encode(original), "<hxirkg>zovig(1)</hxirkg>")
+        encoded = apply_chain(original, "atbash,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "atbash,base64", "decode"),
+                         original)
+
     def test_punycode(self):
         c = CODECS["punycode"]
         # domain-shaped input: per-label IDNA (xn-- form)

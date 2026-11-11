@@ -53,6 +53,7 @@ base85     Base85 (RFC 1924, unpadded)
 zlib       zlib compression (latin-1 mapped, chain with base64)
 rot13      ROT13 Caesar shift
 rot47      ROT47 printable-ASCII rotation (its own inverse)
+atbash     Atbash alphabet mirror a<->z (its own inverse)
 rev        String reversal (its own inverse)
 punycode   IDNA/punycode (xn-- labels, RFC 3492)
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
@@ -76,6 +77,10 @@ for using it alone when `-c` is omitted.
 `rot13` it also scrambles digits and punctuation — `<script>` becomes
 `kD4C:AEm`. It is its own inverse, and `detect` does not flag it: any
 printable string could be a rot47 blob, so there is no reliable signal.
+
+`atbash` mirrors the alphabet (`a` <-> `z`, `A` <-> `Z`), leaving
+non-letters untouched — `Hello` becomes `Svool`. Also its own inverse,
+and also not flagged by `detect` for the same reason.
 
 Any single-byte XOR key works the same way: `xor0` … `xor255` as chain
 steps (XOR is its own inverse on the bytes, so the same step undoes
@@ -330,7 +335,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-85 tests: known vectors per codec, round-trips (including unicode and empty
+86 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, named presets, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 
