@@ -52,6 +52,7 @@ base32     Base32 (RFC 4648, padded)
 base85     Base85 (RFC 1924, unpadded)
 zlib       zlib compression (latin-1 mapped, chain with base64)
 rot13      ROT13 Caesar shift
+rot47      ROT47 printable-ASCII rotation (its own inverse)
 rev        String reversal (its own inverse)
 punycode   IDNA/punycode (xn-- labels, RFC 3492)
 utf16le    UTF-16LE bytes, latin-1 mapped (BOM tolerated)
@@ -70,6 +71,11 @@ Any Caesar shift is available as a chain step too: `rot1` … `rot25`
 (`rot13` is the registered name; `rotN` for other shifts is resolved
 dynamically). `--rot N` is shorthand for appending `rotN` to the chain, or
 for using it alone when `-c` is omitted.
+
+`rot47` rotates the whole printable ASCII range (33-126) by 47, so unlike
+`rot13` it also scrambles digits and punctuation — `<script>` becomes
+`kD4C:AEm`. It is its own inverse, and `detect` does not flag it: any
+printable string could be a rot47 blob, so there is no reliable signal.
 
 Any single-byte XOR key works the same way: `xor0` … `xor255` as chain
 steps (XOR is its own inverse on the bytes, so the same step undoes
@@ -324,7 +330,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-84 tests: known vectors per codec, round-trips (including unicode and empty
+85 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, named presets, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 

@@ -122,6 +122,23 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.decode("Uryyb, Jbeyq!"), "Hello, World!")
         self.assertEqual(c.encode("123!@#"), "123!@#")  # non-letters untouched
 
+    def test_rot47(self):
+        c = CODECS["rot47"]
+        self.assertEqual(c.encode("Hello, World!"), "w6==@[ (@C=5P")
+        self.assertEqual(c.decode("w6==@[ (@C=5P"), "Hello, World!")
+        # digits and punctuation rotate too — that is the point of rot47
+        self.assertEqual(c.encode("123!@#"), "`abPoR")
+        self.assertEqual(c.encode(""), "")
+        # space, control chars and non-ASCII pass through untouched
+        self.assertEqual(c.encode("a b"), "2 3")
+        self.assertEqual(c.encode("héllo"), "9é==@")
+        # its own inverse, and it composes with other codecs
+        self.assertEqual(c.decode(c.encode("héllo 🎯")), "héllo 🎯")
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "rot47,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "rot47,base64", "decode"),
+                         original)
+
     def test_punycode(self):
         c = CODECS["punycode"]
         # domain-shaped input: per-label IDNA (xn-- form)

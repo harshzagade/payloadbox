@@ -386,6 +386,31 @@ def make_rot_codec(shift: int) -> Codec:
     )
 
 
+# ------------------------------------------------------------ rot47 -------
+def rot47_encode(s: str) -> str:
+    """ROT47: rotate printable ASCII (33-126) by 47 (mod 94).
+
+    The printable-rotation layer in bypass chains — unlike rot13 it also
+    shifts digits and punctuation, so ``<script>`` becomes
+    ``kD4C:AEm``. Its own inverse, like rot13 and rev. Chars outside
+    33-126 (space, control chars, non-ASCII) pass through untouched.
+    Deliberately not added to detect(): any printable string could be a
+    rot47 blob, so there is no reliable signal (same as base85).
+    """
+    out: list[str] = []
+    for ch in s:
+        o = ord(ch)
+        if 33 <= o <= 126:
+            out.append(chr(33 + ((o - 33 + 47) % 94)))
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
+def rot47_decode(s: str) -> str:
+    return rot47_encode(s)  # ROT47 is its own inverse
+
+
 # ---------------------------------------------------------- utf16 --------
 def _utf16_encode(s: str, endian: str) -> str:
     """Encode to raw UTF-16 bytes, carried through the str layer via latin-1.
@@ -622,6 +647,8 @@ CODECS: dict[str, Codec] = {
         Codec("zlib", "zlib compression (latin-1 mapped, chain with base64)",
               zlib_encode, zlib_decode),
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
+        Codec("rot47", "ROT47 printable-ASCII rotation (its own inverse)",
+              rot47_encode, rot47_decode),
         Codec("rev", "String reversal (its own inverse)",
               rev_encode, rev_decode),
         Codec("punycode", "IDNA/punycode (xn-- labels, RFC 3492)",
