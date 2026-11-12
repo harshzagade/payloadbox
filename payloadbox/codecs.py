@@ -6,6 +6,7 @@ codecs operate on the UTF-8 representation of the input.
 from __future__ import annotations
 
 import base64
+import gzip
 import html
 import json
 import quopri
@@ -243,6 +244,52 @@ def _looks_zlib(t: str) -> bool:
     try:
         zlib.decompress(raw).decode("utf-8")
     except (zlib.error, UnicodeDecodeError):
+        return False
+    return True
+
+
+# ------------------------------------------------------------ gzip --------
+def gzip_encode(s: str) -> str:
+    """Compress the UTF-8 bytes with gzip (level 9, fixed mtime=0),
+    carried via latin-1 like zlib.
+
+    mtime=0 makes the output deterministic, so the same input always
+    produces the same blob. Chain with base64/hex when the transport
+    needs printable text.
+    """
+    return gzip.compress(_to_bytes(s), 9, mtime=0).decode("latin-1")
+
+
+def gzip_decode(s: str) -> str:
+    # gzip rejects trailing data after the member (it tries to read a
+    # next member), so a trailing newline from piped input would fail the
+    # decode — strip surrounding space/tab/CR/LF first. Only those four:
+    # str.strip() would also eat the 0x1f magic byte.
+    s = s.strip(" \t\r\n")
+    if not s:
+        return ""
+    try:
+        raw = gzip.decompress(s.encode("latin-1"))
+    except (OSError, EOFError, zlib.error, UnicodeEncodeError) as e:
+        raise ValueError(f"invalid gzip stream: {e}") from e
+    return _from_bytes(raw)
+
+
+def _looks_gzip(t: str) -> bool:
+    """True when ``t`` is a gzip stream that decompresses to valid UTF-8.
+
+    The gzip magic is 0x1f 0x8b; the trial decompress then rules out
+    lookalikes, so false positives are negligible. Never raises.
+    """
+    if len(t) < 2 or t[0] != "\x1f" or t[1] != "\x8b":
+        return False
+    try:
+        raw = t.encode("latin-1")
+    except UnicodeEncodeError:
+        return False
+    try:
+        gzip.decompress(raw).decode("utf-8")
+    except (OSError, EOFError, zlib.error, UnicodeDecodeError):
         return False
     return True
 
@@ -688,6 +735,8 @@ CODECS: dict[str, Codec] = {
               base85_encode, base85_decode),
         Codec("zlib", "zlib compression (latin-1 mapped, chain with base64)",
               zlib_encode, zlib_decode),
+        Codec("gzip", "gzip compression (latin-1 mapped, chain with base64)",
+              gzip_encode, gzip_decode),
         Codec("rot13", "ROT13 Caesar shift", rot13_encode, rot13_decode),
         Codec("rot47", "ROT47 printable-ASCII rotation (its own inverse)",
               rot47_encode, rot47_decode),
@@ -798,7 +847,10 @@ _UTF7_RE = re.compile(r"\+[A-Za-z0-9+/]{3,}-")
 
 def detect(text: str) -> list[tuple[str, str]]:
     """Heuristically list encodings the text looks like. Never raises."""
-    t = text.strip()
+    # Strip only space/tab/CR/LF: str.strip() also strips \x1c-\x1f,
+    # which would eat the gzip magic byte (0x1f) off a gzip blob before
+    # _looks_gzip ever sees it.
+    t = text.strip(" \t\r\n")
     hits: list[tuple[str, str]] = []
     if not t:
         return hits
@@ -834,6 +886,9 @@ def detect(text: str) -> list[tuple[str, str]]:
         hits.append((endian, "alternating NUL bytes — looks like raw UTF-16"))
     if _looks_zlib(t):
         hits.append(("zlib", "valid zlib header that decompresses to text"))
+    if _looks_gzip(t):
+        hits.append(("gzip", "valid gzip header (0x1f 0x8b) that "
+                     "decompresses to text"))
     if re.search(r"=[0-9A-Fa-f]{2}", t):
         hits.append(("qp", "contains quoted-printable sequences like =3D"))
     if _UTF7_RE.search(t):

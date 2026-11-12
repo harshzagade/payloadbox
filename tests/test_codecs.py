@@ -132,6 +132,34 @@ class TestKnownVectors(unittest.TestCase):
         with self.assertRaises(ValueError):
             c.decode("x\x9c\xff\xff")
 
+    def test_gzip(self):
+        import gzip
+        c = CODECS["gzip"]
+        # known vector: level-9 compression of b"hello" with mtime=0
+        self.assertEqual(c.encode("hello"),
+                         gzip.compress(b"hello", 9, mtime=0).decode("latin-1"))
+        self.assertEqual(c.decode(c.encode("hello")), "hello")
+        self.assertEqual(c.encode(""), gzip.compress(b"", 9, mtime=0).decode("latin-1"))
+        self.assertEqual(c.decode(c.encode("")), "")
+        # deterministic: same input always produces the same blob
+        self.assertEqual(c.encode("hello"), c.encode("hello"))
+        # unicode round-trips through the latin-1-mapped compressed bytes
+        self.assertEqual(c.decode(c.encode("héllo 🎯")), "héllo 🎯")
+        # composes with base64 for printable transport, inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "gzip,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "gzip,base64", "decode"), original)
+        # truncated streams and non-gzip input are rejected, not garbage
+        with self.assertRaises(ValueError):
+            c.decode(c.encode("hello")[:-2])
+        with self.assertRaises(ValueError):
+            c.decode("not a gzip stream")
+        with self.assertRaises(ValueError):
+            c.decode("\x1f\x8b\xff\xff")
+        # trailing whitespace (e.g. a newline from piped input) is
+        # tolerated: gzip rejects trailing data after the member
+        self.assertEqual(c.decode(c.encode("hello") + "\n"), "hello")
+
     def test_rot13(self):
         c = CODECS["rot13"]
         self.assertEqual(c.encode("Hello, World!"), "Uryyb, Jbeyq!")
@@ -527,6 +555,15 @@ class TestDetect(unittest.TestCase):
         self.assertNotIn("zlib", [n for n, _ in detect(blob[:-2])])
         self.assertNotIn("zlib", [n for n, _ in detect("x\x9c\xff\xff")])
 
+    def test_detect_gzip(self):
+        blob = CODECS["gzip"].encode("hello world, this is a payload")
+        names = [n for n, _ in detect(blob)]
+        self.assertIn("gzip", names)
+        # plain text and truncated streams are not claimed
+        self.assertNotIn("gzip", [n for n, _ in detect("xylophone")])
+        self.assertNotIn("gzip", [n for n, _ in detect(blob[:-2])])
+        self.assertNotIn("gzip", [n for n, _ in detect("\x1f\x8b\xff\xff")])
+
     def test_detect_punycode(self):
         self.assertIn("punycode",
                       [n for n, _ in detect("xn--mnchen-3ya.de")])
@@ -627,6 +664,23 @@ class TestAutoDecode(unittest.TestCase):
         text, steps = auto_decode(blob)
         self.assertEqual(text, "<script>")
         self.assertEqual(steps, ["base64", "zlib"])
+
+    def test_auto_gzip(self):
+        blob = CODECS["gzip"].encode("<script>alert(1)</script>")
+        text, steps = auto_decode(blob)
+        self.assertEqual(text, "<script>alert(1)</script>")
+        self.assertEqual(steps, ["gzip"])
+        # a trailing newline (piped input) does not stop the peel
+        text, steps = auto_decode(blob + "\n")
+        self.assertEqual(text, "<script>alert(1)</script>")
+        self.assertEqual(steps, ["gzip"])
+
+    def test_auto_gzip_inside_base64(self):
+        # compress-then-encode chain: base64 peels first, then gzip
+        blob = CODECS["base64"].encode(CODECS["gzip"].encode("<script>"))
+        text, steps = auto_decode(blob)
+        self.assertEqual(text, "<script>")
+        self.assertEqual(steps, ["base64", "gzip"])
 
     def test_auto_punycode(self):
         text, steps = auto_decode("xn--mnchen-3ya.de")

@@ -52,6 +52,7 @@ base64url  Base64 URL-safe (unpadded)
 base32     Base32 (RFC 4648, padded)
 base85     Base85 (RFC 1924, unpadded)
 zlib       zlib compression (latin-1 mapped, chain with base64)
+gzip       gzip compression (latin-1 mapped, chain with base64)
 rot13      ROT13 Caesar shift
 rot47      ROT47 printable-ASCII rotation (its own inverse)
 atbash     Atbash alphabet mirror a<->z (its own inverse)
@@ -264,6 +265,21 @@ $ payloadbox decode -c zlib,base64 "eMOaw4tIw43DicOJVyjDjy/DiknDkVEow4nDiCxWAMKi
 hello world, this is a payload
 ```
 
+gzip compress a payload (the HTTP content-encoding layer — same
+latin-1-mapped carrying as zlib, but with the gzip wrapper, so servers
+and filters that expect `Content-Encoding: gzip` accept it; the output
+is deterministic, `mtime=0`, so the same input always produces the same
+blob — `detect` recognizes the `0x1f 0x8b` magic that decompresses to
+text, so `decode --auto` peels it):
+
+```bash
+$ payloadbox encode -c gzip,base64 "hello world, this is a payload"
+H8KLCAAAAAAAAgPDi0jDjcOJw4lXKMOPL8OKScORUSjDicOILFYAwqJEwoXCgsOEw4rCnMO8w4QUADkHw5PDvh4AAAA=
+
+$ payloadbox decode --auto "$(payloadbox encode -c gzip,base64 "hello world, this is a payload")"
+hello world, this is a payload
+```
+
 Quoted-printable encode an email-header payload (non-ASCII bytes become
 `=XX`, plain ASCII passes through):
 
@@ -356,7 +372,7 @@ $ echo -n "AB" | payloadbox encode -c hex
 python -m unittest discover -s tests -v
 ```
 
-86 tests: known vectors per codec, round-trips (including unicode and empty
+93 tests: known vectors per codec, round-trips (including unicode and empty
 input), chain inversion, named presets, detector heuristics, JWT decode-only behaviour,
 and machine-readable `detect --json` output.
 
