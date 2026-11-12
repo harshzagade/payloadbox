@@ -42,6 +42,22 @@ def url2_decode(s: str) -> str:
     return urllib.parse.unquote(urllib.parse.unquote(s))
 
 
+# ------------------------------------------------------------ urlform ------
+def urlform_encode(s: str) -> str:
+    """Form encoding via quote_plus: spaces become +, the rest %XX.
+
+    Distinct from `url`: strict percent-encoding leaves spaces as %20,
+    while form encoding (application/x-www-form-urlencoded) uses + for
+    spaces — the form a browser submits and many filters expect.
+    """
+    return urllib.parse.quote_plus(s, safe="")
+
+
+def urlform_decode(s: str) -> str:
+    """Undo urlform: + back to space, %XX sequences decoded."""
+    return urllib.parse.unquote_plus(s)
+
+
 # ------------------------------------------------------------ html ---------
 def html_encode(s: str) -> str:
     return html.escape(s, quote=True)
@@ -652,6 +668,8 @@ CODECS: dict[str, Codec] = {
     for c in (
         Codec("url", "Percent-encoding (%3C)", url_encode, url_decode),
         Codec("url2", "Double percent-encoding (%253C)", url2_encode, url2_decode),
+        Codec("urlform", "Form encoding (+ for spaces, quote_plus)",
+              urlform_encode, urlform_decode),
         Codec("html", "HTML entities (&lt;)", html_encode, html_decode),
         Codec("uni", r"Unicode escapes (\u003c)", uni_encode, uni_decode),
         Codec("hex", "Hex string (3c)", hex_encode, hex_decode),
@@ -786,6 +804,14 @@ def detect(text: str) -> list[tuple[str, str]]:
         return hits
     if re.search(r"%25[0-9A-Fa-f]{2}", t):
         hits.append(("url2", "contains double-encoded sequences like %253C"))
+    # Form encoding: a + for a space only means something when the blob
+    # also carries %XX sequences — bare "a+b" is just plain text with a
+    # plus sign, so it is not claimed. Listed before url so --auto peels
+    # the form layer (which handles both + and %XX) rather than url
+    # (which leaves + behind).
+    if "+" in t and re.search(r"%[0-9A-Fa-f]{2}", t):
+        hits.append(("urlform", "contains + for spaces and percent-encoded "
+                     "sequences like %3D"))
     if re.search(r"%[0-9A-Fa-f]{2}", t):
         hits.append(("url", "contains percent-encoded sequences like %3C"))
     if re.search(r"&(#[0-9]+|#[xX][0-9A-Fa-f]+|[A-Za-z][A-Za-z0-9]+);", t):

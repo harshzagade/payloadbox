@@ -16,6 +16,22 @@ class TestKnownVectors(unittest.TestCase):
         self.assertEqual(c.encode("<"), "%253C")
         self.assertEqual(c.decode("%253C"), "<")
 
+    def test_urlform(self):
+        c = CODECS["urlform"]
+        self.assertEqual(c.encode("hello world"), "hello+world")
+        self.assertEqual(c.encode("a+b"), "a%2Bb")
+        self.assertEqual(c.encode("<script>"), "%3Cscript%3E")
+        self.assertEqual(c.decode("hello+world"), "hello world")
+        self.assertEqual(c.decode("a%2Bb"), "a+b")
+        self.assertEqual(c.encode(""), "")
+        self.assertEqual(c.decode(""), "")
+        # unicode round-trips through UTF-8 percent-encoding
+        self.assertEqual(c.decode(c.encode("café au lait")), "café au lait")
+        # composes with other codecs and inverts as a chain
+        original = "<script>alert(1)</script>"
+        encoded = apply_chain(original, "urlform,base64", "encode")
+        self.assertEqual(apply_chain(encoded, "urlform,base64", "decode"), original)
+
     def test_html(self):
         c = CODECS["html"]
         self.assertEqual(c.encode('<a href="x">&'), "&lt;a href=&quot;x&quot;&gt;&amp;")
@@ -464,6 +480,15 @@ class TestDetect(unittest.TestCase):
     def test_detect_url2(self):
         self.assertIn("url2", [n for n, _ in detect("%253C")])
 
+    def test_detect_urlform(self):
+        names = [n for n, _ in detect("hello+world%21")]
+        self.assertIn("urlform", names)
+        # urlform is listed before url so --auto peels the form layer
+        self.assertLess(names.index("urlform"), names.index("url"))
+        # a bare + or a bare %XX is not a form layer on its own
+        self.assertNotIn("urlform", [n for n, _ in detect("a+b")])
+        self.assertNotIn("urlform", [n for n, _ in detect("hello%20world")])
+
     def test_detect_html(self):
         self.assertIn("html", [n for n, _ in detect("&lt;script&gt;")])
 
@@ -590,6 +615,11 @@ class TestAutoDecode(unittest.TestCase):
         text, steps = auto_decode(blob)
         self.assertEqual(text, "<script>alert(1)</script>")
         self.assertEqual(steps, ["zlib"])
+
+    def test_auto_urlform(self):
+        text, steps = auto_decode("hello+world%21")
+        self.assertEqual(text, "hello world!")
+        self.assertEqual(steps, ["urlform"])
 
     def test_auto_zlib_inside_base64(self):
         # compress-then-encode chain: base64 peels first, then zlib

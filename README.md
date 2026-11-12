@@ -41,6 +41,7 @@ stdout or `--output-file`.
 ```
 url        Percent-encoding (%3C)
 url2       Double percent-encoding (%253C)
+urlform    Form encoding (+ for spaces, quote_plus)
 html       HTML entities (&lt;)
 uni        Unicode escapes (\u003c)
 hex        Hex string (3c)
@@ -67,6 +68,13 @@ jwt        JWT header/payload decode only (signature never verified)
 `jwt` is decode-only: `encode -c jwt` fails with a clear error, since
 there is no plain-text form to encode to and the signature is never
 verified against any key.
+
+`urlform` is form encoding (`application/x-www-form-urlencoded`): spaces
+become `+` and everything else is percent-encoded, so `hello world` is
+`hello+world` instead of `hello%20world`. `detect` flags a blob as
+urlform when it carries both `+` and `%XX` sequences — a bare `+` is
+just plain text — and lists it before `url`, so `decode --auto` peels
+the form layer (which handles both) rather than leaving `+` behind.
 
 Any Caesar shift is available as a chain step too: `rot1` … `rot25`
 (`rot13` is the registered name; `rotN` for other shifts is resolved
@@ -265,6 +273,19 @@ caf=C3=A9 <b>
 
 $ payloadbox decode -c qp "caf=C3=A9 <b>"
 café <b>
+```
+
+Form-encode a payload the way a browser submits it (spaces become `+`,
+so it differs from strict percent-encoding exactly on spaces — `detect`
+flags blobs carrying both `+` and `%XX`, so `decode --auto` peels the
+form layer):
+
+```bash
+$ payloadbox encode -c urlform "hello world <script>"
+hello+world+%3Cscript%3E
+
+$ payloadbox decode --auto "hello+world+%3Cscript%3E"
+hello world <script>
 ```
 
 Unicode-escape an event-handler payload:
